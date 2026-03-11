@@ -1,0 +1,30 @@
+name: Feature request
+description: Proponi una nuova funzionalita
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Componente
+      options:
+        - termogea
+        - voice_orchestrator
+        - aruba-ddns
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema o esigenza
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Soluzione proposta
+    validations:
+      required: true

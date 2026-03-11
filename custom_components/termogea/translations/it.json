@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connetti Termogea",
+        "description": "Configura il controller locale Termogea e il file YAML della mappa zone.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "zone_map_path": "Percorso mappa zone",
+          "scan_interval": "Intervallo polling (secondi)",
+          "request_timeout": "Timeout HTTP (secondi)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi al controller Termogea.",
+      "invalid_auth": "Credenziali non valide.",
+      "invalid_zone_map": "Il file YAML della mappa zone manca o non è valido.",
+      "duplicate_zone": "Esiste gia una zona con questo ID.",
+      "duplicate_schedule": "Esiste gia una fascia oraria con questo ID.",
+      "invalid_zone": "ID zona non valido."
+    },
+    "abort": {
+      "already_configured": "Questo host Termogea è già configurato."
+    }
+  }
+}

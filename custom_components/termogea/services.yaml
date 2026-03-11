@@ -1,0 +1,26 @@
+import_legacy_yaml:
+  name: Import legacy YAML
+  description: Import the old YAML zone map into the persistent Termogea storage.
+  fields:
+    zone_map_path:
+      name: Zone map path
+      description: Path of the legacy YAML file inside the Home Assistant config directory.
+      example: termogea_zones.yaml
+
+force_relogin:
+  name: Force relogin
+  description: Clear the current PHP session and re-authenticate on the next request.
+
+apply_zone_policy:
+  name: Apply zone policy
+  description: Evaluate Home Assistant policy inputs and push the final command to one zone.
+  fields:
+    zone_id:
+      name: Zone ID
+      required: true
+      description: Zone identifier defined in the Termogea zone map.
+      example: zona_1
+
+apply_all_zone_policies:
+  name: Apply all zone policies
+  description: Evaluate policy inputs for every configured zone and write the resulting state to Termogea.

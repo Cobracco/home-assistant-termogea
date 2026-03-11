@@ -1,0 +1,44 @@
+name: Bug report
+description: Segnala un problema su add-on o custom integration Home Assistant
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Componente
+      options:
+        - termogea
+        - voice_orchestrator
+        - aruba-ddns
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Versione Home Assistant
+      placeholder: "2026.3.x"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrizione del problema
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passi per riprodurre
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log rilevanti
+      render: shell
