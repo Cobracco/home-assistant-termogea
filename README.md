@@ -2,6 +2,8 @@
 
 Custom integration Home Assistant per controllare e configurare impianti **Termogea** con persistenza nativa, policy per presenza persone, sensori locali e schedulazione settimanale.
 
+![Termogea Logo](logo.png)
+
 ## Repository
 
 - GitHub owner: `Cobracco`
@@ -67,6 +69,9 @@ Se hai un file `termogea_zones.yaml`, puoi importarlo:
 - validation workflow: `hassfest`
 - issue templates GitHub inclusi
 - `CODEOWNERS`, `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md` inclusi
+- branding assets HACS/GitHub:
+  - `icon.png`
+  - `logo.png`
 
 ## Supporto
 

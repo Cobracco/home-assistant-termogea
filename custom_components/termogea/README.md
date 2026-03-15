@@ -2,6 +2,11 @@
 
 Custom integration Home Assistant per controllare e configurare impianti **Termogea** con persistenza nativa, policy di presenza e schedulazione settimanale.
 
+Asset grafici repository:
+
+- `icon.png`
+- `logo.png`
+
 ## Funzionalita
 
 - login e polling locale verso il controller Termogea
