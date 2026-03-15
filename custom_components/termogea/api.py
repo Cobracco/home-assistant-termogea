@@ -132,6 +132,43 @@ class TermogeaClient:
                 return value
         return ""
 
+    @staticmethod
+    def _guess_zone_humidity_register(
+        register_catalog: dict[str, tuple[RegisterDefinition, str]],
+        zone_index: int,
+    ) -> RegisterDefinition | None:
+        """Best-effort lookup for zone humidity register when config key is missing."""
+        best_score = -1
+        best: RegisterDefinition | None = None
+
+        for name, (definition, mode) in register_catalog.items():
+            lower = name.lower()
+            humidity_score = 0
+            if re.search(r"(humidity|humid|umid)", lower):
+                humidity_score += 5
+            if re.search(r"\brh\b", lower):
+                humidity_score += 4
+            if re.search(r"\bur\b", lower):
+                humidity_score += 2
+            if humidity_score == 0:
+                continue
+
+            zone_score = 0
+            if re.search(rf"(zone|zona)\s*0*{zone_index}\b", lower):
+                zone_score = 4
+            elif re.search(rf"\bz\s*0*{zone_index}\b", lower):
+                zone_score = 3
+            elif re.search(rf"[_\-\s]0*{zone_index}\b", lower):
+                zone_score = 1
+
+            mode_score = 2 if "R" in mode else -1
+            score = humidity_score + zone_score + mode_score
+            if score > best_score:
+                best_score = score
+                best = definition
+
+        return best if best_score >= 6 else None
+
     async def async_login(self) -> None:
         """Authenticate against the Termogea login form."""
         async with self._login_lock:
@@ -465,6 +502,8 @@ class TermogeaClient:
 
             current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
             humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
+            if humidity_def is None:
+                humidity_def = self._guess_zone_humidity_register(register_catalog, idx)
             target_tuple = register_catalog.get(tset_name) if tset_name else None
             target_def = None
             if target_tuple is not None and "W" in target_tuple[1]:

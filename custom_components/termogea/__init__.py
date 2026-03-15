@@ -45,7 +45,7 @@ from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
 LOVELACE_CARD_STATIC_URL = "/termogea/termogea-zone-grid-card.js"
-LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.13"
+LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.14"
 LOVELACE_CARD_FILE = Path(__file__).parent / "frontend" / "termogea-zone-grid-card.js"
 DATA_LOVELACE_CARD_REGISTERED = "lovelace_card_registered"
 
@@ -218,6 +218,44 @@ async def _bootstrap_storage_from_controller(
     storage.config.zones = zones
     await storage.async_save()
     return True
+
+
+async def _sync_zone_humidity_mapping_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Backfill humidity register mapping for already configured zones."""
+    try:
+        _global, imported_zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return
+    if not imported_zones:
+        return
+
+    imported_humidity: dict[int, object] = {}
+    for imported in imported_zones:
+        idx = _zone_index(imported.zone_id)
+        if idx is None or imported.current_humidity is None:
+            continue
+        imported_humidity[idx] = imported.current_humidity
+
+    if not imported_humidity:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        if zone.current_humidity is not None:
+            continue
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        humidity_register = imported_humidity.get(idx)
+        if humidity_register is not None:
+            zone.current_humidity = humidity_register
+            changed = True
+
+    if changed:
+        await storage.async_save()
 
 
 def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list[ZoneDefinition]) -> None:
@@ -492,6 +530,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
         if storage.config.zones:
             await _sync_zone_names_from_controller(storage, client)
+            if any(zone.current_humidity is None for zone in storage.config.zones):
+                await _sync_zone_humidity_mapping_from_controller(storage, client)
     except TermogeaAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except TermogeaApiError as err:

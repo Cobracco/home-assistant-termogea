@@ -30,7 +30,7 @@ class TermogeaZoneGridCard extends HTMLElement {
   }
 
   _getEntities() {
-    if (!this._hass) {
+    if (!this._hass || !this._hass.states || typeof this._hass.states !== "object") {
       return [];
     }
 
@@ -79,8 +79,8 @@ class TermogeaZoneGridCard extends HTMLElement {
       return;
     }
 
-    if (!this._hass) {
-      this.shadowRoot.innerHTML = "<ha-card><div class='empty'>Loading...</div></ha-card>";
+    if (!this._hass || !this._hass.states || typeof this._hass.states !== "object") {
+      this.shadowRoot.innerHTML = "<ha-card><div class='empty'>Anteprima scheda Termogea.</div></ha-card>";
       return;
     }
 

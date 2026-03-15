@@ -70,6 +70,18 @@ def _selector_options(values: list[str]) -> list[selector.SelectOptionDict]:
     return [{"value": value, "label": value} for value in values]
 
 
+def _zone_selector_options(zones: list[ZoneDefinition]) -> list[selector.SelectOptionDict]:
+    """Build readable selector options for zones."""
+    ordered = sorted(zones, key=lambda zone: (zone.name or zone.zone_id).lower())
+    options: list[selector.SelectOptionDict] = []
+    for zone in ordered:
+        label = (zone.name or zone.zone_id).strip() or zone.zone_id
+        if label.lower() != zone.zone_id.lower():
+            label = f"{label} ({zone.zone_id})"
+        options.append({"value": zone.zone_id, "label": label})
+    return options
+
+
 def _global_schema(defaults: GlobalConfig) -> vol.Schema:
     return vol.Schema(
         {
@@ -411,8 +423,8 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_edit_zone_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         storage = await self._async_storage()
-        zone_ids = [zone.zone_id for zone in storage.config.zones]
-        if not zone_ids:
+        zones = list(storage.config.zones)
+        if not zones:
             return await self._async_finish_and_reload()
         if user_input is not None:
             self._editing_zone_id = user_input["zone_id"]
@@ -423,7 +435,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required("zone_id"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=_selector_options(zone_ids),
+                            options=_zone_selector_options(zones),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
@@ -489,8 +501,8 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         storage = await self._async_storage()
-        zone_ids = [zone.zone_id for zone in storage.config.zones]
-        if not zone_ids:
+        zones = list(storage.config.zones)
+        if not zones:
             return await self._async_finish_and_reload()
         if user_input is not None:
             self._editing_zone_id = user_input["zone_id"]
@@ -501,7 +513,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required("zone_id"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=_selector_options(zone_ids),
+                            options=_zone_selector_options(zones),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
@@ -545,8 +557,8 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_delete_zone_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         storage = await self._async_storage()
-        zone_ids = [zone.zone_id for zone in storage.config.zones]
-        if not zone_ids:
+        zones = list(storage.config.zones)
+        if not zones:
             return await self._async_finish_and_reload()
         if user_input is not None:
             await storage.async_delete_zone(user_input["zone_id"])
@@ -557,7 +569,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required("zone_id"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=_selector_options(zone_ids),
+                            options=_zone_selector_options(zones),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
