@@ -45,7 +45,7 @@ from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
 LOVELACE_CARD_STATIC_URL = "/termogea/termogea-zone-grid-card.js"
-LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.14"
+LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.16"
 LOVELACE_CARD_FILE = Path(__file__).parent / "frontend" / "termogea-zone-grid-card.js"
 DATA_LOVELACE_CARD_REGISTERED = "lovelace_card_registered"
 

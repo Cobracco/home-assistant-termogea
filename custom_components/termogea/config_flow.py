@@ -23,6 +23,9 @@ from .const import (
     GLOBAL_MODES,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    SEASON_MODES,
+    SEASON_MODE_SUMMER,
+    SEASON_MODE_WINTER,
     WEEKDAY_OPTIONS,
 )
 from .models import GlobalConfig, RegisterDefinition, ScheduleRule, ZoneDefinition
@@ -109,12 +112,43 @@ def _global_schema(defaults: GlobalConfig) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                "season_mode",
+                default=defaults.season_mode,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_selector_options(SEASON_MODES),
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Required("schedule_enabled", default=defaults.schedule_enabled): bool,
             vol.Required("comfort_temp", default=defaults.comfort_temp): vol.Coerce(float),
             vol.Required("eco_temp", default=defaults.eco_temp): vol.Coerce(float),
             vol.Required("away_temp", default=defaults.away_temp): vol.Coerce(float),
             vol.Required("night_temp", default=defaults.night_temp): vol.Coerce(float),
             vol.Required("inactive_temp", default=defaults.inactive_temp): vol.Coerce(float),
+            vol.Required(
+                "winter_comfort_temp",
+                default=defaults.winter_comfort_temp,
+            ): vol.Coerce(float),
+            vol.Required("winter_eco_temp", default=defaults.winter_eco_temp): vol.Coerce(float),
+            vol.Required("winter_away_temp", default=defaults.winter_away_temp): vol.Coerce(float),
+            vol.Required("winter_night_temp", default=defaults.winter_night_temp): vol.Coerce(float),
+            vol.Required(
+                "winter_inactive_temp",
+                default=defaults.winter_inactive_temp,
+            ): vol.Coerce(float),
+            vol.Required(
+                "summer_comfort_temp",
+                default=defaults.summer_comfort_temp,
+            ): vol.Coerce(float),
+            vol.Required("summer_eco_temp", default=defaults.summer_eco_temp): vol.Coerce(float),
+            vol.Required("summer_away_temp", default=defaults.summer_away_temp): vol.Coerce(float),
+            vol.Required("summer_night_temp", default=defaults.summer_night_temp): vol.Coerce(float),
+            vol.Required(
+                "summer_inactive_temp",
+                default=defaults.summer_inactive_temp,
+            ): vol.Coerce(float),
         }
     )
 
@@ -316,6 +350,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         self._storage: TermogeaStorageManager | None = None
         self._editing_zone_id: str | None = None
         self._editing_schedule_id: str | None = None
+        self._editing_schedule_season: str = SEASON_MODE_WINTER
 
     async def _async_storage(self) -> TermogeaStorageManager:
         if self._storage is None:
@@ -341,9 +376,12 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 "edit_zone_select",
                 "edit_zone_mapping_select",
                 "delete_zone_select",
-                "add_schedule",
-                "edit_schedule_select",
-                "delete_schedule_select",
+                "add_schedule_winter",
+                "edit_schedule_select_winter",
+                "delete_schedule_select_winter",
+                "add_schedule_summer",
+                "edit_schedule_select_summer",
+                "delete_schedule_select_summer",
                 "import_legacy_yaml",
             ],
         )
@@ -400,6 +438,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 global_enabled=bool(user_input["global_enabled"]),
                 automations_enabled=bool(user_input["automations_enabled"]),
                 allow_common_without_people=bool(user_input["allow_common_without_people"]),
+                season_mode=str(user_input["season_mode"]).lower(),
                 global_mode=str(user_input["global_mode"]),
                 auto_fallback_mode=str(user_input["auto_fallback_mode"]),
                 comfort_temp=float(user_input["comfort_temp"]),
@@ -407,8 +446,20 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 away_temp=float(user_input["away_temp"]),
                 night_temp=float(user_input["night_temp"]),
                 inactive_temp=float(user_input["inactive_temp"]),
+                winter_comfort_temp=float(user_input["winter_comfort_temp"]),
+                winter_eco_temp=float(user_input["winter_eco_temp"]),
+                winter_away_temp=float(user_input["winter_away_temp"]),
+                winter_night_temp=float(user_input["winter_night_temp"]),
+                winter_inactive_temp=float(user_input["winter_inactive_temp"]),
+                summer_comfort_temp=float(user_input["summer_comfort_temp"]),
+                summer_eco_temp=float(user_input["summer_eco_temp"]),
+                summer_away_temp=float(user_input["summer_away_temp"]),
+                summer_night_temp=float(user_input["summer_night_temp"]),
+                summer_inactive_temp=float(user_input["summer_inactive_temp"]),
                 schedule_enabled=bool(user_input["schedule_enabled"]),
                 schedule_rules=current.schedule_rules,
+                schedule_rules_winter=current.schedule_rules_winter,
+                schedule_rules_summer=current.schedule_rules_summer,
             )
             await storage.async_update_global_config(updated)
             return await self._async_finish_and_reload()
@@ -577,19 +628,77 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_add_schedule(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        return await self._async_step_schedule(user_input, rule=None)
+    @staticmethod
+    def _season_step_suffix(season: str) -> str:
+        return "summer" if season == SEASON_MODE_SUMMER else "winter"
 
-    async def async_step_edit_schedule_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    def _schedule_rules_for_season(self, season: str, global_config: GlobalConfig) -> list[ScheduleRule]:
+        if season == SEASON_MODE_SUMMER:
+            return list(global_config.schedule_rules_summer)
+        if global_config.schedule_rules_winter:
+            return list(global_config.schedule_rules_winter)
+        return list(global_config.schedule_rules)
+
+    def _apply_schedule_rules_for_season(
+        self,
+        season: str,
+        global_config: GlobalConfig,
+        rules: list[ScheduleRule],
+    ) -> None:
+        if season == SEASON_MODE_SUMMER:
+            global_config.schedule_rules_summer = rules
+        else:
+            global_config.schedule_rules_winter = rules
+        # Keep legacy field aligned for backward compatibility.
+        if season == SEASON_MODE_WINTER or not global_config.schedule_rules:
+            global_config.schedule_rules = list(global_config.schedule_rules_winter)
+
+    async def async_step_add_schedule(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        return await self.async_step_add_schedule_winter(user_input)
+
+    async def async_step_add_schedule_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._editing_schedule_season = SEASON_MODE_WINTER
+        self._editing_schedule_id = None
+        return await self._async_step_schedule(
+            user_input,
+            rule=None,
+            season=SEASON_MODE_WINTER,
+        )
+
+    async def async_step_add_schedule_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._editing_schedule_season = SEASON_MODE_SUMMER
+        self._editing_schedule_id = None
+        return await self._async_step_schedule(
+            user_input,
+            rule=None,
+            season=SEASON_MODE_SUMMER,
+        )
+
+    async def _async_step_edit_schedule_select_for_season(
+        self,
+        season: str,
+        step_id: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
         storage = await self._async_storage()
-        rule_ids = [rule.rule_id for rule in storage.config.global_config.schedule_rules]
+        rules = self._schedule_rules_for_season(season, storage.config.global_config)
+        rule_ids = [rule.rule_id for rule in rules]
         if not rule_ids:
             return await self._async_finish_and_reload()
         if user_input is not None:
+            self._editing_schedule_season = season
             self._editing_schedule_id = user_input["rule_id"]
-            return await self.async_step_schedule()
+            return await self._async_step_schedule(
+                None,
+                rule=None,
+                season=season,
+            )
         return self.async_show_form(
-            step_id="edit_schedule_select",
+            step_id=step_id,
             data_schema=vol.Schema(
                 {
                     vol.Required("rule_id"): selector.SelectSelector(
@@ -602,19 +711,42 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
+    async def async_step_edit_schedule_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        return await self.async_step_edit_schedule_select_winter(user_input)
+
+    async def async_step_edit_schedule_select_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_edit_schedule_select_for_season(
+            SEASON_MODE_WINTER,
+            "edit_schedule_select_winter",
+            user_input,
+        )
+
+    async def async_step_edit_schedule_select_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_edit_schedule_select_for_season(
+            SEASON_MODE_SUMMER,
+            "edit_schedule_select_summer",
+            user_input,
+        )
+
     async def _async_step_schedule(
         self,
         user_input: dict[str, Any] | None = None,
         *,
         rule: ScheduleRule | None,
+        season: str,
     ) -> FlowResult:
         storage = await self._async_storage()
+        rules = self._schedule_rules_for_season(season, storage.config.global_config)
         current_rule = rule
         if current_rule is None and self._editing_schedule_id:
             current_rule = next(
                 (
                     candidate
-                    for candidate in storage.config.global_config.schedule_rules
+                    for candidate in rules
                     if candidate.rule_id == self._editing_schedule_id
                 ),
                 None,
@@ -622,10 +754,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             rule_id = str(user_input["rule_id"]).strip()
-            existing_ids = {
-                candidate.rule_id
-                for candidate in storage.config.global_config.schedule_rules
-            }
+            existing_ids = {candidate.rule_id for candidate in rules}
             if (
                 rule_id != (current_rule.rule_id if current_rule else None)
                 and rule_id in existing_ids
@@ -640,41 +769,67 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     end=str(user_input["end"]),
                     mode=str(user_input["mode"]).lower(),
                 )
-                rules = [
+                updated_rules = [
                     candidate
-                    for candidate in storage.config.global_config.schedule_rules
-                    if candidate.rule_id != rule_id and candidate.rule_id != self._editing_schedule_id
+                    for candidate in rules
+                    if candidate.rule_id != rule_id
+                    and candidate.rule_id != self._editing_schedule_id
                 ]
-                rules.append(new_rule)
+                updated_rules.append(new_rule)
                 global_config = storage.config.global_config
-                global_config.schedule_rules = rules
+                self._apply_schedule_rules_for_season(season, global_config, updated_rules)
                 await storage.async_update_global_config(global_config)
                 self._editing_schedule_id = None
                 return await self._async_finish_and_reload()
 
+        suffix = self._season_step_suffix(season)
         return self.async_show_form(
-            step_id="add_schedule" if current_rule is None else "schedule",
+            step_id=f"add_schedule_{suffix}" if current_rule is None else f"schedule_{suffix}",
             data_schema=_schedule_schema(current_rule),
             errors=errors,
         )
 
     async def async_step_schedule(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        return await self._async_step_schedule(user_input, rule=None)
+        return await self.async_step_schedule_winter(user_input)
 
-    async def async_step_delete_schedule_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_schedule_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._editing_schedule_season = SEASON_MODE_WINTER
+        return await self._async_step_schedule(
+            user_input,
+            rule=None,
+            season=SEASON_MODE_WINTER,
+        )
+
+    async def async_step_schedule_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._editing_schedule_season = SEASON_MODE_SUMMER
+        return await self._async_step_schedule(
+            user_input,
+            rule=None,
+            season=SEASON_MODE_SUMMER,
+        )
+
+    async def _async_step_delete_schedule_select_for_season(
+        self,
+        season: str,
+        step_id: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
         storage = await self._async_storage()
-        rules = storage.config.global_config.schedule_rules
+        rules = self._schedule_rules_for_season(season, storage.config.global_config)
         if not rules:
             return await self._async_finish_and_reload()
         if user_input is not None:
             global_config = storage.config.global_config
-            global_config.schedule_rules = [
-                rule for rule in rules if rule.rule_id != user_input["rule_id"]
-            ]
+            updated = [rule for rule in rules if rule.rule_id != user_input["rule_id"]]
+            self._apply_schedule_rules_for_season(season, global_config, updated)
             await storage.async_update_global_config(global_config)
             return await self._async_finish_and_reload()
         return self.async_show_form(
-            step_id="delete_schedule_select",
+            step_id=step_id,
             data_schema=vol.Schema(
                 {
                     vol.Required("rule_id"): selector.SelectSelector(
@@ -685,6 +840,29 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     )
                 }
             ),
+        )
+
+    async def async_step_delete_schedule_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self.async_step_delete_schedule_select_winter(user_input)
+
+    async def async_step_delete_schedule_select_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_delete_schedule_select_for_season(
+            SEASON_MODE_WINTER,
+            "delete_schedule_select_winter",
+            user_input,
+        )
+
+    async def async_step_delete_schedule_select_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_delete_schedule_select_for_season(
+            SEASON_MODE_SUMMER,
+            "delete_schedule_select_summer",
+            user_input,
         )
 
     async def async_step_import_legacy_yaml(self, user_input: dict[str, Any] | None = None) -> FlowResult:

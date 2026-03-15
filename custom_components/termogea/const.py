@@ -63,5 +63,15 @@ GLOBAL_MODES = [
     GLOBAL_MODE_OFF,
 ]
 
+SEASON_MODE_AUTO = "auto"
+SEASON_MODE_WINTER = "winter"
+SEASON_MODE_SUMMER = "summer"
+
+SEASON_MODES = [
+    SEASON_MODE_AUTO,
+    SEASON_MODE_WINTER,
+    SEASON_MODE_SUMMER,
+]
+
 WEEKDAY_OPTIONS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 STORAGE_VERSION = 1

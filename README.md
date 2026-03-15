@@ -25,6 +25,7 @@ Custom integration Home Assistant per controllare e configurare impianti **Termo
   - night
   - inactive/off
 - fasce orarie settimanali persistenti
+- configurazioni stagionali separate (estate/inverno) per setpoint globali e fasce orarie
 - sensori di policy per debug e dashboard
 - supporto umidita zona (se registro disponibile)
 - import legacy da YAML

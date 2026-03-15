@@ -37,9 +37,12 @@
           "edit_zone_select": "Modifica zona",
           "edit_zone_mapping_select": "Modifica mapping tecnico zona",
           "delete_zone_select": "Elimina zona",
-          "add_schedule": "Aggiungi fascia oraria",
-          "edit_schedule_select": "Modifica fascia oraria",
-          "delete_schedule_select": "Elimina fascia oraria",
+          "add_schedule_winter": "Aggiungi fascia inverno",
+          "edit_schedule_select_winter": "Modifica fascia inverno",
+          "delete_schedule_select_winter": "Elimina fascia inverno",
+          "add_schedule_summer": "Aggiungi fascia estate",
+          "edit_schedule_select_summer": "Modifica fascia estate",
+          "delete_schedule_select_summer": "Elimina fascia estate",
           "import_legacy_yaml": "Importa YAML legacy"
         }
       },
@@ -62,12 +65,23 @@
           "allow_common_without_people": "Consenti zone comuni senza persone",
           "global_mode": "Modalita globale",
           "auto_fallback_mode": "Modalita fallback auto",
+          "season_mode": "Stagione attiva",
           "schedule_enabled": "Fasce orarie abilitate",
           "comfort_temp": "Temperatura comfort",
           "eco_temp": "Temperatura eco",
           "away_temp": "Temperatura away",
           "night_temp": "Temperatura night",
-          "inactive_temp": "Temperatura inattiva/off"
+          "inactive_temp": "Temperatura inattiva/off",
+          "winter_comfort_temp": "Inverno comfort",
+          "winter_eco_temp": "Inverno eco",
+          "winter_away_temp": "Inverno away",
+          "winter_night_temp": "Inverno night",
+          "winter_inactive_temp": "Inverno inattiva/off",
+          "summer_comfort_temp": "Estate comfort",
+          "summer_eco_temp": "Estate eco",
+          "summer_away_temp": "Estate away",
+          "summer_night_temp": "Estate night",
+          "summer_inactive_temp": "Estate inattiva/off"
         }
       },
       "add_zone": {
@@ -146,8 +160,8 @@
           "zone_id": "ID zona"
         }
       },
-      "add_schedule": {
-        "title": "Aggiungi fascia oraria",
+      "add_schedule_winter": {
+        "title": "Aggiungi fascia inverno",
         "data": {
           "rule_id": "ID fascia",
           "name": "Nome",
@@ -157,8 +171,8 @@
           "mode": "Modalita"
         }
       },
-      "schedule": {
-        "title": "Modifica fascia oraria",
+      "schedule_winter": {
+        "title": "Modifica fascia inverno",
         "data": {
           "rule_id": "ID fascia",
           "name": "Nome",
@@ -168,14 +182,48 @@
           "mode": "Modalita"
         }
       },
-      "edit_schedule_select": {
-        "title": "Seleziona fascia da modificare",
+      "edit_schedule_select_winter": {
+        "title": "Seleziona fascia inverno da modificare",
         "data": {
           "rule_id": "ID fascia"
         }
       },
-      "delete_schedule_select": {
-        "title": "Seleziona fascia da eliminare",
+      "delete_schedule_select_winter": {
+        "title": "Seleziona fascia inverno da eliminare",
+        "data": {
+          "rule_id": "ID fascia"
+        }
+      },
+      "add_schedule_summer": {
+        "title": "Aggiungi fascia estate",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "schedule_summer": {
+        "title": "Modifica fascia estate",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "edit_schedule_select_summer": {
+        "title": "Seleziona fascia estate da modificare",
+        "data": {
+          "rule_id": "ID fascia"
+        }
+      },
+      "delete_schedule_select_summer": {
+        "title": "Seleziona fascia estate da eliminare",
         "data": {
           "rule_id": "ID fascia"
         }

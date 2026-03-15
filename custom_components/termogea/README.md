@@ -27,6 +27,7 @@ Asset grafici repository:
   - `night`
   - `inactive/off`
 - fasce orarie settimanali persistenti
+- setpoint globali e fasce orarie separati per stagione (estate/inverno)
 - sensori di policy per debug e dashboard
 - umidita corrente per zona (se il mapping registro e disponibile)
 - import legacy da file YAML

@@ -48,6 +48,7 @@ class GlobalConfig:
     global_enabled: bool = True
     automations_enabled: bool = True
     allow_common_without_people: bool = False
+    season_mode: str = "auto"
     global_mode: str = "auto"
     auto_fallback_mode: str = "eco"
     comfort_temp: float = 21.0
@@ -55,13 +56,31 @@ class GlobalConfig:
     away_temp: float = 16.0
     night_temp: float = 18.0
     inactive_temp: float = 16.0
+    winter_comfort_temp: float = 21.0
+    winter_eco_temp: float = 18.5
+    winter_away_temp: float = 16.0
+    winter_night_temp: float = 18.0
+    winter_inactive_temp: float = 16.0
+    summer_comfort_temp: float = 21.0
+    summer_eco_temp: float = 18.5
+    summer_away_temp: float = 16.0
+    summer_night_temp: float = 18.0
+    summer_inactive_temp: float = 16.0
     schedule_enabled: bool = True
     schedule_rules: list[ScheduleRule] = field(default_factory=list)
+    schedule_rules_winter: list[ScheduleRule] = field(default_factory=list)
+    schedule_rules_summer: list[ScheduleRule] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize the global config."""
         data = asdict(self)
         data["schedule_rules"] = [rule.as_dict() for rule in self.schedule_rules]
+        data["schedule_rules_winter"] = [
+            rule.as_dict() for rule in self.schedule_rules_winter
+        ]
+        data["schedule_rules_summer"] = [
+            rule.as_dict() for rule in self.schedule_rules_summer
+        ]
         return data
 
 

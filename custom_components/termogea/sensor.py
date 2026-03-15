@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DATA_STORAGE, DOMAIN
 from .entity import controller_device_info, zone_device_info
-from .policy import evaluate_zone_policy, resolve_active_mode
+from .policy import evaluate_zone_policy, resolve_active_mode, resolve_active_season
 
 
 async def async_setup_entry(
@@ -40,16 +40,22 @@ async def async_setup_entry(
             name="Termogea Configured Zones",
             unique_suffix="configured_zones",
         ),
+        TermogeaGlobalSensor(
+            coordinator,
+            storage,
+            key="active_season",
+            name="Termogea Active Season",
+            unique_suffix="active_season",
+        ),
     ]
     for zone in storage.config.zones:
-        if zone.current_humidity is not None:
-            entities.append(
-                TermogeaHumiditySensor(
-                    coordinator,
-                    storage,
-                    zone.zone_id,
-                )
+        entities.append(
+            TermogeaHumiditySensor(
+                coordinator,
+                storage,
+                zone.zone_id,
             )
+        )
         entities.append(
             TermogeaPolicyTextSensor(
                 coordinator,
@@ -183,6 +189,8 @@ class TermogeaGlobalSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         if self._key == "active_mode":
             return resolve_active_mode(self._storage.config.global_config)
+        if self._key == "active_season":
+            return resolve_active_season(self._storage.config.global_config)
         if self._key == "configured_zones":
             return len(self._storage.config.zones)
         return None
@@ -197,6 +205,7 @@ class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = "mdi:water-percent"
 
     def __init__(self, coordinator, storage, zone_id: str) -> None:
         super().__init__(coordinator)
@@ -214,9 +223,17 @@ class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         snapshot = self.coordinator.data.get(self._zone_id)
-        return super().available and snapshot is not None and snapshot.current_humidity is not None
+        return super().available and snapshot is not None
 
     @property
     def device_info(self) -> DeviceInfo:
         zone = self._storage.get_zone(self._zone_id)
         return zone_device_info(self.coordinator.config_entry, zone)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        zone = self._storage.get_zone(self._zone_id)
+        return {
+            "zone_id": zone.zone_id,
+            "humidity_mapping_configured": zone.current_humidity is not None,
+        }

@@ -133,6 +133,19 @@ class TermogeaClient:
         return ""
 
     @staticmethod
+    def _find_humidity_reg_name_in_section(section: Mapping[str, Any]) -> str:
+        """Extract humidity register name from arbitrary config keys."""
+        for key, value in section.items():
+            upper_key = str(key).upper()
+            if "REG_NAME" not in upper_key:
+                continue
+            if re.search(r"(HUM|UMID|RH|HNOW|UR)", upper_key):
+                register_name = TermogeaClient._strip_quotes(str(value))
+                if register_name:
+                    return register_name
+        return ""
+
+    @staticmethod
     def _guess_zone_humidity_register(
         register_catalog: dict[str, tuple[RegisterDefinition, str]],
         zone_index: int,
@@ -499,6 +512,8 @@ class TermogeaClient:
                     "THC_HUMIDITY_REG_NAME",
                 ),
             )
+            if not hnow_name:
+                hnow_name = self._find_humidity_reg_name_in_section(section)
 
             current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
             humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
@@ -555,26 +570,40 @@ class TermogeaClient:
                 )
             )
 
-        rules: list[ScheduleRule] = []
+        rules_winter: list[ScheduleRule] = []
+        rules_summer: list[ScheduleRule] = []
         if parser.has_section("thcontrol_zone1"):
             zone1 = parser["thcontrol_zone1"]
             win_path = self._strip_quotes(zone1.get("THC_TPRG_CONF_FILE_WIN", ""))
+            sum_path = self._strip_quotes(zone1.get("THC_TPRG_CONF_FILE_SUM", ""))
             if win_path:
                 try:
                     win_schedule = await self.async_download_controller_file(win_path)
-                    rules = self._parse_schedule_rules(
+                    rules_winter = self._parse_schedule_rules(
                         win_schedule.decode(errors="ignore"),
                         comfort_temp=comfort,
                         eco_temp=eco,
                         away_temp=away,
                     )
                 except TermogeaApiError:
-                    rules = []
+                    rules_winter = []
+            if sum_path:
+                try:
+                    sum_schedule = await self.async_download_controller_file(sum_path)
+                    rules_summer = self._parse_schedule_rules(
+                        sum_schedule.decode(errors="ignore"),
+                        comfort_temp=comfort,
+                        eco_temp=eco,
+                        away_temp=away,
+                    )
+                except TermogeaApiError:
+                    rules_summer = []
 
         global_config = GlobalConfig(
             global_enabled=True,
             automations_enabled=True,
             allow_common_without_people=False,
+            season_mode="auto",
             global_mode="auto",
             auto_fallback_mode="eco",
             comfort_temp=comfort,
@@ -582,8 +611,20 @@ class TermogeaClient:
             away_temp=away,
             night_temp=night,
             inactive_temp=inactive,
-            schedule_enabled=bool(rules),
-            schedule_rules=rules,
+            winter_comfort_temp=comfort,
+            winter_eco_temp=eco,
+            winter_away_temp=away,
+            winter_night_temp=night,
+            winter_inactive_temp=inactive,
+            summer_comfort_temp=comfort,
+            summer_eco_temp=eco,
+            summer_away_temp=away,
+            summer_night_temp=night,
+            summer_inactive_temp=inactive,
+            schedule_enabled=bool(rules_winter or rules_summer),
+            schedule_rules=rules_winter or rules_summer,
+            schedule_rules_winter=rules_winter,
+            schedule_rules_summer=rules_summer,
         )
         return global_config, zones
 

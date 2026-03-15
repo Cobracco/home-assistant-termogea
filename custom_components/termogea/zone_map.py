@@ -66,6 +66,12 @@ def _parse_schedule_rule(data: dict) -> ScheduleRule:
         raise ZoneMapError(f"Schedule rule missing field: {err}") from err
 
 
+def _parse_schedule_rules(data: Any) -> list[ScheduleRule]:
+    if not isinstance(data, list):
+        return []
+    return [_parse_schedule_rule(rule) for rule in data if isinstance(rule, dict)]
+
+
 def _parse_zone(zone_data: dict) -> ZoneDefinition:
     try:
         zone_id = str(zone_data["zone_id"])
@@ -105,20 +111,44 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
 
 def _parse_global_config(data: dict | None) -> GlobalConfig:
     data = data or {}
-    schedule_rules = [_parse_schedule_rule(rule) for rule in data.get("schedule_rules", [])]
+    legacy_schedule_rules = _parse_schedule_rules(data.get("schedule_rules", []))
+    schedule_rules_winter = _parse_schedule_rules(
+        data.get("schedule_rules_winter", data.get("schedule_rules", []))
+    )
+    schedule_rules_summer = _parse_schedule_rules(
+        data.get("schedule_rules_summer", data.get("schedule_rules", []))
+    )
+    comfort_temp = float(data.get("comfort_temp", 21.0))
+    eco_temp = float(data.get("eco_temp", 18.5))
+    away_temp = float(data.get("away_temp", 16.0))
+    night_temp = float(data.get("night_temp", 18.0))
+    inactive_temp = float(data.get("inactive_temp", data.get("away_temp", 16.0)))
     return GlobalConfig(
         global_enabled=bool(data.get("global_enabled", True)),
         automations_enabled=bool(data.get("automations_enabled", True)),
         allow_common_without_people=bool(data.get("allow_common_without_people", False)),
+        season_mode=str(data.get("season_mode", "auto")).lower(),
         global_mode=str(data.get("global_mode", "auto")).lower(),
         auto_fallback_mode=str(data.get("auto_fallback_mode", "eco")).lower(),
-        comfort_temp=float(data.get("comfort_temp", 21.0)),
-        eco_temp=float(data.get("eco_temp", 18.5)),
-        away_temp=float(data.get("away_temp", 16.0)),
-        night_temp=float(data.get("night_temp", 18.0)),
-        inactive_temp=float(data.get("inactive_temp", data.get("away_temp", 16.0))),
+        comfort_temp=comfort_temp,
+        eco_temp=eco_temp,
+        away_temp=away_temp,
+        night_temp=night_temp,
+        inactive_temp=inactive_temp,
+        winter_comfort_temp=float(data.get("winter_comfort_temp", comfort_temp)),
+        winter_eco_temp=float(data.get("winter_eco_temp", eco_temp)),
+        winter_away_temp=float(data.get("winter_away_temp", away_temp)),
+        winter_night_temp=float(data.get("winter_night_temp", night_temp)),
+        winter_inactive_temp=float(data.get("winter_inactive_temp", inactive_temp)),
+        summer_comfort_temp=float(data.get("summer_comfort_temp", comfort_temp)),
+        summer_eco_temp=float(data.get("summer_eco_temp", eco_temp)),
+        summer_away_temp=float(data.get("summer_away_temp", away_temp)),
+        summer_night_temp=float(data.get("summer_night_temp", night_temp)),
+        summer_inactive_temp=float(data.get("summer_inactive_temp", inactive_temp)),
         schedule_enabled=bool(data.get("schedule_enabled", True)),
-        schedule_rules=schedule_rules,
+        schedule_rules=legacy_schedule_rules,
+        schedule_rules_winter=schedule_rules_winter,
+        schedule_rules_summer=schedule_rules_summer,
     )
 
 

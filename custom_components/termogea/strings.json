@@ -37,9 +37,12 @@
           "edit_zone_select": "Edit zone",
           "edit_zone_mapping_select": "Edit zone technical mapping",
           "delete_zone_select": "Delete zone",
-          "add_schedule": "Add schedule",
-          "edit_schedule_select": "Edit schedule",
-          "delete_schedule_select": "Delete schedule",
+          "add_schedule_winter": "Add winter schedule",
+          "edit_schedule_select_winter": "Edit winter schedule",
+          "delete_schedule_select_winter": "Delete winter schedule",
+          "add_schedule_summer": "Add summer schedule",
+          "edit_schedule_select_summer": "Edit summer schedule",
+          "delete_schedule_select_summer": "Delete summer schedule",
           "import_legacy_yaml": "Import legacy YAML"
         }
       },
@@ -62,12 +65,23 @@
           "allow_common_without_people": "Allow common areas without people",
           "global_mode": "Global mode",
           "auto_fallback_mode": "Auto fallback mode",
+          "season_mode": "Season mode",
           "schedule_enabled": "Schedule enabled",
           "comfort_temp": "Comfort temperature",
           "eco_temp": "Eco temperature",
           "away_temp": "Away temperature",
           "night_temp": "Night temperature",
-          "inactive_temp": "Inactive/Off temperature"
+          "inactive_temp": "Inactive/Off temperature",
+          "winter_comfort_temp": "Winter comfort temperature",
+          "winter_eco_temp": "Winter eco temperature",
+          "winter_away_temp": "Winter away temperature",
+          "winter_night_temp": "Winter night temperature",
+          "winter_inactive_temp": "Winter inactive/off temperature",
+          "summer_comfort_temp": "Summer comfort temperature",
+          "summer_eco_temp": "Summer eco temperature",
+          "summer_away_temp": "Summer away temperature",
+          "summer_night_temp": "Summer night temperature",
+          "summer_inactive_temp": "Summer inactive/off temperature"
         }
       },
       "add_zone": {
@@ -146,8 +160,8 @@
           "zone_id": "Zone ID"
         }
       },
-      "add_schedule": {
-        "title": "Add schedule",
+      "add_schedule_winter": {
+        "title": "Add winter schedule",
         "data": {
           "rule_id": "Schedule ID",
           "name": "Name",
@@ -157,8 +171,8 @@
           "mode": "Mode"
         }
       },
-      "schedule": {
-        "title": "Edit schedule",
+      "schedule_winter": {
+        "title": "Edit winter schedule",
         "data": {
           "rule_id": "Schedule ID",
           "name": "Name",
@@ -168,14 +182,48 @@
           "mode": "Mode"
         }
       },
-      "edit_schedule_select": {
-        "title": "Select schedule to edit",
+      "edit_schedule_select_winter": {
+        "title": "Select winter schedule to edit",
         "data": {
           "rule_id": "Schedule ID"
         }
       },
-      "delete_schedule_select": {
-        "title": "Select schedule to delete",
+      "delete_schedule_select_winter": {
+        "title": "Select winter schedule to delete",
+        "data": {
+          "rule_id": "Schedule ID"
+        }
+      },
+      "add_schedule_summer": {
+        "title": "Add summer schedule",
+        "data": {
+          "rule_id": "Schedule ID",
+          "name": "Name",
+          "days": "Days",
+          "start": "Start time",
+          "end": "End time",
+          "mode": "Mode"
+        }
+      },
+      "schedule_summer": {
+        "title": "Edit summer schedule",
+        "data": {
+          "rule_id": "Schedule ID",
+          "name": "Name",
+          "days": "Days",
+          "start": "Start time",
+          "end": "End time",
+          "mode": "Mode"
+        }
+      },
+      "edit_schedule_select_summer": {
+        "title": "Select summer schedule to edit",
+        "data": {
+          "rule_id": "Schedule ID"
+        }
+      },
+      "delete_schedule_select_summer": {
+        "title": "Select summer schedule to delete",
         "data": {
           "rule_id": "Schedule ID"
         }

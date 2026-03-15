@@ -14,6 +14,8 @@ from .const import (
     GLOBAL_MODE_ECO,
     GLOBAL_MODE_NIGHT,
     GLOBAL_MODE_OFF,
+    SEASON_MODE_SUMMER,
+    SEASON_MODE_WINTER,
 )
 from .models import GlobalConfig, PolicyDecision, ZoneDefinition
 
@@ -43,6 +45,90 @@ def _parse_hhmm(value: str) -> time:
     return time(hour=int(hour), minute=int(minute))
 
 
+def resolve_active_season(settings: GlobalConfig) -> str:
+    """Resolve the active season (winter/summer)."""
+    configured = (settings.season_mode or "").lower()
+    if configured in {SEASON_MODE_WINTER, SEASON_MODE_SUMMER}:
+        return configured
+
+    month = dt_util.now().month
+    return SEASON_MODE_SUMMER if 4 <= month <= 9 else SEASON_MODE_WINTER
+
+
+def _schedule_rules_for_season(settings: GlobalConfig, season: str):
+    if season == SEASON_MODE_SUMMER:
+        rules = settings.schedule_rules_summer
+    else:
+        rules = settings.schedule_rules_winter
+    if rules:
+        return rules
+    return settings.schedule_rules
+
+
+def _season_mode_value(settings: GlobalConfig, season: str, mode: str) -> float:
+    if mode == GLOBAL_MODE_COMFORT:
+        return (
+            settings.summer_comfort_temp
+            if season == SEASON_MODE_SUMMER
+            else settings.winter_comfort_temp
+        )
+    if mode == GLOBAL_MODE_ECO:
+        return (
+            settings.summer_eco_temp
+            if season == SEASON_MODE_SUMMER
+            else settings.winter_eco_temp
+        )
+    if mode == GLOBAL_MODE_AWAY:
+        return (
+            settings.summer_away_temp
+            if season == SEASON_MODE_SUMMER
+            else settings.winter_away_temp
+        )
+    if mode == GLOBAL_MODE_NIGHT:
+        return (
+            settings.summer_night_temp
+            if season == SEASON_MODE_SUMMER
+            else settings.winter_night_temp
+        )
+    return (
+        settings.summer_inactive_temp
+        if season == SEASON_MODE_SUMMER
+        else settings.winter_inactive_temp
+    )
+
+
+def _legacy_mode_value(settings: GlobalConfig, mode: str) -> float:
+    if mode == GLOBAL_MODE_COMFORT:
+        return settings.comfort_temp
+    if mode == GLOBAL_MODE_ECO:
+        return settings.eco_temp
+    if mode == GLOBAL_MODE_AWAY:
+        return settings.away_temp
+    if mode == GLOBAL_MODE_NIGHT:
+        return settings.night_temp
+    return settings.inactive_temp
+
+
+def _zone_mode_value(zone: ZoneDefinition, mode: str) -> float:
+    if mode == GLOBAL_MODE_COMFORT:
+        return zone.comfort_temp
+    if mode == GLOBAL_MODE_ECO:
+        return zone.eco_temp
+    if mode == GLOBAL_MODE_AWAY:
+        return zone.away_temp
+    if mode == GLOBAL_MODE_NIGHT:
+        return zone.night_temp
+    return zone.inactive_temp
+
+
+def _seasonal_zone_target(zone: ZoneDefinition, settings: GlobalConfig, season: str, mode: str) -> float:
+    """Apply seasonal delta while preserving zone-specific offsets."""
+    zone_value = _zone_mode_value(zone, mode)
+    seasonal_global = _season_mode_value(settings, season, mode)
+    legacy_global = _legacy_mode_value(settings, mode)
+    return round(zone_value + (seasonal_global - legacy_global), 2)
+
+
 def resolve_active_mode(settings: GlobalConfig) -> str:
     """Resolve the effective active mode including schedule."""
     mode = settings.global_mode.lower()
@@ -55,8 +141,9 @@ def resolve_active_mode(settings: GlobalConfig) -> str:
     now = dt_util.now()
     weekday = now.strftime("%a").lower()[:3]
     current = now.time()
+    active_season = resolve_active_season(settings)
 
-    for rule in settings.schedule_rules:
+    for rule in _schedule_rules_for_season(settings, active_season):
         if weekday not in rule.days:
             continue
         start = _parse_hhmm(rule.start)
@@ -82,6 +169,7 @@ def evaluate_zone_policy(
     assigned_people_present = any(_is_on(hass, person) for person in zone.people)
     presence_detected = bool(zone.presence_sensor and _is_on(hass, zone.presence_sensor))
     house_people_present = _house_people_present(hass, zones)
+    active_season = resolve_active_season(settings)
     active_mode = resolve_active_mode(settings)
 
     if not zone.enabled:
@@ -90,7 +178,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="zone_disabled",
-            effective_target=zone.inactive_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_OFF),
             active_mode=active_mode,
         )
 
@@ -100,7 +188,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="global_disabled",
-            effective_target=zone.inactive_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_OFF),
             active_mode=active_mode,
         )
 
@@ -116,7 +204,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="no_people_assigned_home",
-            effective_target=zone.away_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_AWAY),
             active_mode=active_mode,
         )
 
@@ -126,7 +214,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="global_off",
-            effective_target=zone.inactive_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_OFF),
             active_mode=active_mode,
         )
 
@@ -136,7 +224,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="global_away",
-            effective_target=zone.away_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_AWAY),
             active_mode=active_mode,
         )
 
@@ -146,7 +234,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=True,
             policy_reason="global_comfort",
-            effective_target=zone.comfort_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_COMFORT),
             active_mode=active_mode,
         )
 
@@ -156,7 +244,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=True,
             policy_reason="global_night",
-            effective_target=zone.night_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_NIGHT),
             active_mode=active_mode,
         )
 
@@ -166,7 +254,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=True,
             policy_reason="global_eco",
-            effective_target=zone.eco_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
             active_mode=active_mode,
         )
 
@@ -176,7 +264,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=True,
             policy_reason="presence_comfort",
-            effective_target=zone.comfort_temp,
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_COMFORT),
             active_mode=active_mode,
         )
 
@@ -185,6 +273,6 @@ def evaluate_zone_policy(
         presence_detected=presence_detected,
         zone_enabled=True,
         policy_reason="eligible_without_local_presence",
-        effective_target=zone.eco_temp,
+        effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
         active_mode=active_mode,
     )
