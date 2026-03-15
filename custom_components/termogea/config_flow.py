@@ -281,7 +281,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
     """Handle Termogea options and persistent config."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+        super().__init__(config_entry)
         self._storage: TermogeaStorageManager | None = None
         self._pending_zone: dict[str, Any] | None = None
         self._editing_zone_id: str | None = None
