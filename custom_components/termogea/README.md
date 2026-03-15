@@ -29,6 +29,7 @@ Asset grafici repository:
 - fasce orarie settimanali persistenti
 - setpoint globali e fasce orarie separati per stagione (estate/inverno)
 - sensori di policy per debug e dashboard
+- switch globale `Termogea Power` per accendere/spegnere tutto
 - umidita corrente per zona (se il mapping registro e disponibile)
 - import legacy da file YAML
 

@@ -27,6 +27,7 @@ Custom integration Home Assistant per controllare e configurare impianti **Termo
 - fasce orarie settimanali persistenti
 - configurazioni stagionali separate (estate/inverno) per setpoint globali e fasce orarie
 - sensori di policy per debug e dashboard
+- switch globale `Termogea Power` per accendere/spegnere tutto
 - supporto umidita zona (se registro disponibile)
 - import legacy da YAML
 

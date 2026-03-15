@@ -9,6 +9,7 @@ PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 CONF_SCAN_INTERVAL = "scan_interval"
