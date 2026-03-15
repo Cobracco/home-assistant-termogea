@@ -78,6 +78,44 @@ Prerequisiti HACS frontend:
 - `button-card`
 - `auto-entities`
 
+## Scheda Lovelace Termogea (picker UI)
+
+L'integrazione registra automaticamente una card custom:
+
+- tipo card: `custom:termogea-zone-grid-card`
+- file frontend: `/termogea/termogea-zone-grid-card.js`
+- visibile in **Aggiungi scheda** (sezione custom) dopo riavvio Home Assistant
+
+Esempio configurazione minima:
+
+```yaml
+type: custom:termogea-zone-grid-card
+title: Zone Termogea
+```
+
+Con lista entita esplicita:
+
+```yaml
+type: custom:termogea-zone-grid-card
+title: Zone Termogea
+entities:
+  - climate.termogea_zona_1_climate
+  - climate.termogea_zona_2_climate
+```
+
+## Problemi Risolti
+
+Risolti nelle ultime iterazioni (fino a `0.1.11`):
+
+- errore `AttributeError: property 'config_entry' ... has no setter` nel flow opzioni
+- migrazione connessione per evitare `KeyError: 'host'` in setup entry
+- fallback host quando entry corrotta puntava al titolo (es. `pierini`) invece dell'IP
+- avvio integrazione anche senza `termogea_zones.yaml` (YAML legacy ora opzionale)
+- bootstrap iniziale da controller Termogea (`telegea.tar`) con import zone/soglie/schedule base
+- nomi zona sincronizzati dal controller (no default `Termogea_zona_X_device` quando disponibili)
+- salvataggio form policy zona separato dalla form mapping tecnico
+- nuova card Lovelace custom registrata automaticamente nel picker schede
+
 ## Sviluppo
 
 - validation workflow: `hassfest`

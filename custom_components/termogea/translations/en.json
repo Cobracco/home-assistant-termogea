@@ -35,6 +35,7 @@
           "global_settings": "Global settings",
           "add_zone": "Add zone",
           "edit_zone_select": "Edit zone",
+          "edit_zone_mapping_select": "Edit zone technical mapping",
           "delete_zone_select": "Delete zone",
           "add_schedule": "Add schedule",
           "edit_schedule_select": "Edit schedule",
@@ -125,6 +126,12 @@
       },
       "edit_zone_select": {
         "title": "Select zone to edit",
+        "data": {
+          "zone_id": "Zone ID"
+        }
+      },
+      "edit_zone_mapping_select": {
+        "title": "Select zone technical mapping to edit",
         "data": {
           "zone_id": "Zone ID"
         }

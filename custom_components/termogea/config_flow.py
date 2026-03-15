@@ -297,7 +297,6 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
     def __init__(self) -> None:
         super().__init__()
         self._storage: TermogeaStorageManager | None = None
-        self._pending_zone: dict[str, Any] | None = None
         self._editing_zone_id: str | None = None
         self._editing_schedule_id: str | None = None
 
@@ -323,6 +322,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 "global_settings",
                 "add_zone",
                 "edit_zone_select",
+                "edit_zone_mapping_select",
                 "delete_zone_select",
                 "add_schedule",
                 "edit_schedule_select",
@@ -447,21 +447,28 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             ):
                 errors["base"] = "duplicate_zone"
             else:
-                self._pending_zone = {
-                    "zone_id": zone_id,
-                    "name": str(user_input["name"]).strip(),
-                    "enabled": bool(user_input["enabled"]),
-                    "manual_override_allowed": bool(user_input["manual_override_allowed"]),
-                    "is_common_area": bool(user_input["is_common_area"]),
-                    "people": list(user_input.get("people", [])),
-                    "presence_sensor": user_input.get("presence_sensor") or None,
-                    "comfort_temp": float(user_input["comfort_temp"]),
-                    "eco_temp": float(user_input["eco_temp"]),
-                    "away_temp": float(user_input["away_temp"]),
-                    "night_temp": float(user_input["night_temp"]),
-                    "inactive_temp": float(user_input["inactive_temp"]),
-                }
-                return await self.async_step_zone_mapping()
+                updated_zone = ZoneDefinition(
+                    zone_id=zone_id,
+                    name=str(user_input["name"]).strip(),
+                    current_temperature=current_zone.current_temperature if current_zone else None,
+                    target_temperature=current_zone.target_temperature if current_zone else None,
+                    hvac_mode=current_zone.hvac_mode if current_zone else None,
+                    people=list(user_input.get("people", [])),
+                    presence_sensor=user_input.get("presence_sensor") or None,
+                    is_common_area=bool(user_input["is_common_area"]),
+                    enabled=bool(user_input["enabled"]),
+                    manual_override_allowed=bool(user_input["manual_override_allowed"]),
+                    comfort_temp=float(user_input["comfort_temp"]),
+                    eco_temp=float(user_input["eco_temp"]),
+                    away_temp=float(user_input["away_temp"]),
+                    night_temp=float(user_input["night_temp"]),
+                    inactive_temp=float(user_input["inactive_temp"]),
+                )
+                await storage.async_upsert_zone(updated_zone)
+                if current_zone and current_zone.zone_id != zone_id:
+                    await storage.async_delete_zone(current_zone.zone_id)
+                self._editing_zone_id = None
+                return await self._async_finish_and_reload()
 
         return self.async_show_form(
             step_id="add_zone" if current_zone is None else "zone_policy",
@@ -472,29 +479,55 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
     async def async_step_zone_policy(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         return await self._async_step_zone_policy(user_input, zone=None)
 
+    async def async_step_edit_zone_mapping_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        storage = await self._async_storage()
+        zone_ids = [zone.zone_id for zone in storage.config.zones]
+        if not zone_ids:
+            return await self._async_finish_and_reload()
+        if user_input is not None:
+            self._editing_zone_id = user_input["zone_id"]
+            return await self.async_step_zone_mapping()
+        return self.async_show_form(
+            step_id="edit_zone_mapping_select",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("zone_id"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_selector_options(zone_ids),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
     async def async_step_zone_mapping(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         storage = await self._async_storage()
         current_zone = storage.get_zone(self._editing_zone_id) if self._editing_zone_id else None
+        if current_zone is None:
+            self._editing_zone_id = None
+            return await self._async_finish_and_reload()
         if user_input is not None:
             zone = ZoneDefinition(
-                zone_id=self._pending_zone["zone_id"],
-                name=self._pending_zone["name"],
+                zone_id=current_zone.zone_id,
+                name=current_zone.name,
                 current_temperature=_build_register("current", user_input),
                 target_temperature=_build_register("target", user_input),
                 hvac_mode=_build_register("hvac", user_input),
-                people=self._pending_zone["people"],
-                presence_sensor=self._pending_zone["presence_sensor"],
-                is_common_area=self._pending_zone["is_common_area"],
-                enabled=self._pending_zone["enabled"],
-                manual_override_allowed=self._pending_zone["manual_override_allowed"],
-                comfort_temp=self._pending_zone["comfort_temp"],
-                eco_temp=self._pending_zone["eco_temp"],
-                away_temp=self._pending_zone["away_temp"],
-                night_temp=self._pending_zone["night_temp"],
-                inactive_temp=self._pending_zone["inactive_temp"],
+                people=current_zone.people,
+                presence_sensor=current_zone.presence_sensor,
+                is_common_area=current_zone.is_common_area,
+                enabled=current_zone.enabled,
+                manual_override_allowed=current_zone.manual_override_allowed,
+                comfort_temp=current_zone.comfort_temp,
+                eco_temp=current_zone.eco_temp,
+                away_temp=current_zone.away_temp,
+                night_temp=current_zone.night_temp,
+                inactive_temp=current_zone.inactive_temp,
             )
             await storage.async_upsert_zone(zone)
-            self._pending_zone = None
             self._editing_zone_id = None
             return await self._async_finish_and_reload()
 

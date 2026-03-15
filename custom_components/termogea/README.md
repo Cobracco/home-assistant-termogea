@@ -50,6 +50,32 @@ La configurazione primaria avviene dalla UI dell’integrazione:
 - preset zona
 - mapping tecnico registri
 
+## Card Lovelace integrata
+
+Dalla versione `0.1.11` l'integrazione espone una card custom Lovelace:
+
+- tipo: `custom:termogea-zone-grid-card`
+- URL modulo: `/termogea/termogea-zone-grid-card.js`
+- compare nel picker **Aggiungi scheda** dopo riavvio Home Assistant e refresh browser
+
+Configurazione base:
+
+```yaml
+type: custom:termogea-zone-grid-card
+title: Zone Termogea
+```
+
+## Problemi risolti
+
+Correzioni principali incluse:
+
+- fix opzioni integrazione per evitare errori runtime nel flow
+- normalizzazione dati connessione e recovery host/unique_id su entry legacy
+- avvio con storage persistente anche senza file YAML legacy obbligatorio
+- import automatico bootstrap da controller per zone, registri e impostazioni base
+- separazione salvataggio policy zona e mapping tecnico (flow indipendenti)
+- registrazione automatica card Lovelace custom nel selettore schede
+
 ### Import legacy opzionale
 
 Se hai un vecchio file `termogea_zones.yaml`, puoi importarlo:

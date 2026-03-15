@@ -35,6 +35,7 @@
           "global_settings": "Parametri globali",
           "add_zone": "Aggiungi zona",
           "edit_zone_select": "Modifica zona",
+          "edit_zone_mapping_select": "Modifica mapping tecnico zona",
           "delete_zone_select": "Elimina zona",
           "add_schedule": "Aggiungi fascia oraria",
           "edit_schedule_select": "Modifica fascia oraria",
@@ -125,6 +126,12 @@
       },
       "edit_zone_select": {
         "title": "Seleziona zona da modificare",
+        "data": {
+          "zone_id": "ID zona"
+        }
+      },
+      "edit_zone_mapping_select": {
+        "title": "Seleziona mapping tecnico zona da modificare",
         "data": {
           "zone_id": "ID zona"
         }
