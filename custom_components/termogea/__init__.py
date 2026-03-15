@@ -45,7 +45,6 @@ from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
 LOVELACE_CARD_STATIC_URL = "/termogea/termogea-zone-grid-card.js"
-LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.16"
 LOVELACE_CARD_FILE = Path(__file__).parent / "frontend" / "termogea-zone-grid-card.js"
 DATA_LOVELACE_CARD_REGISTERED = "lovelace_card_registered"
 
@@ -121,6 +120,15 @@ def _looks_like_default_zone_name(name: str, zone_id: str) -> bool:
     )
 
 
+def _lovelace_card_module_url() -> str:
+    """Return card module URL with cache-busting token."""
+    try:
+        version_token = str(int(LOVELACE_CARD_FILE.stat().st_mtime))
+    except OSError:
+        version_token = "1"
+    return f"{LOVELACE_CARD_STATIC_URL}?v={version_token}"
+
+
 async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
     """Expose and auto-load the custom Lovelace card module."""
     domain_data = hass.data.setdefault(DOMAIN, {})
@@ -157,15 +165,17 @@ async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
         # Path may already be registered after a reload.
         pass
 
+    module_url = _lovelace_card_module_url()
+
     if hasattr(frontend, "async_register_extra_module_url"):
         maybe_awaitable = frontend.async_register_extra_module_url(
             hass,
-            LOVELACE_CARD_MODULE_URL,
+            module_url,
         )
         if isawaitable(maybe_awaitable):
             await maybe_awaitable
     elif hasattr(frontend, "add_extra_js_url"):
-        maybe_awaitable = frontend.add_extra_js_url(hass, LOVELACE_CARD_MODULE_URL)
+        maybe_awaitable = frontend.add_extra_js_url(hass, module_url)
         if isawaitable(maybe_awaitable):
             await maybe_awaitable
     else:

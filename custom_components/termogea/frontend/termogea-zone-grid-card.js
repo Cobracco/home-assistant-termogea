@@ -29,6 +29,15 @@ class TermogeaZoneGridCard extends HTMLElement {
     return Math.max(2, Math.ceil(entities.length / 2));
   }
 
+  getGridOptions() {
+    return {
+      columns: 6,
+      rows: 4,
+      min_rows: 3,
+      min_columns: 3,
+    };
+  }
+
   _getEntities() {
     if (!this._hass || !this._hass.states || typeof this._hass.states !== "object") {
       return [];
@@ -79,41 +88,42 @@ class TermogeaZoneGridCard extends HTMLElement {
       return;
     }
 
-    if (!this._hass || !this._hass.states || typeof this._hass.states !== "object") {
-      this.shadowRoot.innerHTML = "<ha-card><div class='empty'>Anteprima scheda Termogea.</div></ha-card>";
-      return;
-    }
+    try {
+      if (!this._hass || !this._hass.states || typeof this._hass.states !== "object") {
+        this.shadowRoot.innerHTML = "<ha-card><div class='empty'>Anteprima scheda Termogea.</div></ha-card>";
+        return;
+      }
 
-    const title = this._config.title || "Termogea";
-    const entities = this._getEntities();
-    const cards = entities
-      .map((entry) => {
-        const stateObj = this._hass.states[entry.entity];
-        const name = this._nameFor(entry, stateObj);
-        const current = stateObj?.attributes?.current_temperature;
-        const humidity = stateObj?.attributes?.current_humidity;
-        const target = stateObj?.attributes?.temperature;
-        const isOn = this._isOn(stateObj);
-        const unavailable = !stateObj || stateObj.state === "unavailable";
+      const title = this._config.title || "Termogea";
+      const entities = this._getEntities();
+      const cards = entities
+        .map((entry) => {
+          const stateObj = this._hass.states[entry.entity];
+          const name = this._nameFor(entry, stateObj);
+          const current = stateObj?.attributes?.current_temperature;
+          const humidity = stateObj?.attributes?.current_humidity;
+          const target = stateObj?.attributes?.temperature;
+          const isOn = this._isOn(stateObj);
+          const unavailable = !stateObj || stateObj.state === "unavailable";
 
-        return `
-          <div class="zone ${isOn ? "on" : "off"} ${unavailable ? "unavailable" : ""}" data-action="more_info" data-entity="${entry.entity}" tabindex="0" role="button">
-            <div class="zone-name">${name}</div>
-            <div class="zone-temp">${this._formatTemp(current)}<span class="unit">°C</span></div>
-            <div class="zone-target">Target ${this._formatTemp(target)}°C · UR ${this._formatTemp(humidity)}%</div>
-            <div class="zone-actions">
-              <button class="action small" data-action="temp_down" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>-</button>
-              <button class="action small" data-action="temp_up" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>+</button>
-              <button class="action toggle ${isOn ? "active" : ""}" data-action="toggle" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>
-                ${isOn ? "ON" : "OFF"}
-              </button>
+          return `
+            <div class="zone ${isOn ? "on" : "off"} ${unavailable ? "unavailable" : ""}" data-action="more_info" data-entity="${entry.entity}" tabindex="0" role="button">
+              <div class="zone-name">${name}</div>
+              <div class="zone-temp">${this._formatTemp(current)}<span class="unit">°C</span></div>
+              <div class="zone-target">Target ${this._formatTemp(target)}°C · UR ${this._formatTemp(humidity)}%</div>
+              <div class="zone-actions">
+                <button class="action small" data-action="temp_down" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>-</button>
+                <button class="action small" data-action="temp_up" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>+</button>
+                <button class="action toggle ${isOn ? "active" : ""}" data-action="toggle" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>
+                  ${isOn ? "ON" : "OFF"}
+                </button>
+              </div>
             </div>
-          </div>
-        `;
-      })
-      .join("");
+          `;
+        })
+        .join("");
 
-    this.shadowRoot.innerHTML = `
+      this.shadowRoot.innerHTML = `
       <style>
         ha-card {
           padding: 16px;
@@ -217,6 +227,11 @@ class TermogeaZoneGridCard extends HTMLElement {
         </div>
       </ha-card>
     `;
+    } catch (err) {
+      console.error("Termogea zone grid card render error", err);
+      this.shadowRoot.innerHTML =
+        "<ha-card><div class='empty'>Errore caricamento scheda Termogea. Controlla la console browser.</div></ha-card>";
+    }
   }
 
   _fireEvent(type, detail = {}) {
@@ -289,11 +304,12 @@ if (!customElements.get("termogea-zone-grid-card")) {
 }
 
 window.customCards = window.customCards || [];
-if (!window.customCards.some((card) => card?.type === "custom:termogea-zone-grid-card")) {
+const TERMOGEA_CARD_TYPE = "termogea-zone-grid-card";
+if (!window.customCards.some((card) => card && (card.type === TERMOGEA_CARD_TYPE || card.type === `custom:${TERMOGEA_CARD_TYPE}`))) {
   window.customCards.push({
-    type: "custom:termogea-zone-grid-card",
+    type: TERMOGEA_CARD_TYPE,
     name: "Termogea Zone Grid",
-    description: "Griglia rapida delle zone Termogea con toggle e setpoint.",
+    description: "Griglia rapida delle zone Termogea con toggle, setpoint e umidita.",
     preview: false,
     documentationURL: "https://github.com/Cobracco/home-assistant-termogea",
   });
