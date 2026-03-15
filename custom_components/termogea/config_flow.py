@@ -274,14 +274,14 @@ class TermogeaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
-        return TermogeaOptionsFlow(config_entry)
+        return TermogeaOptionsFlow()
 
 
 class TermogeaOptionsFlow(config_entries.OptionsFlow):
     """Handle Termogea options and persistent config."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        super().__init__(config_entry)
+    def __init__(self) -> None:
+        super().__init__()
         self._storage: TermogeaStorageManager | None = None
         self._pending_zone: dict[str, Any] | None = None
         self._editing_zone_id: str | None = None

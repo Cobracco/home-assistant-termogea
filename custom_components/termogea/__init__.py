@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
@@ -33,6 +35,33 @@ from .models import ZoneDefinition
 from .policy import evaluate_zone_policy
 from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to the latest version."""
+    if entry.version > 2:
+        _LOGGER.error(
+            "Cannot migrate Termogea entry %s: unsupported future version %s",
+            entry.entry_id,
+            entry.version,
+        )
+        return False
+
+    if entry.version == 1:
+        migrated_data = dict(entry.data)
+        migrated_data.setdefault(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
+        migrated_data.setdefault(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        migrated_data.setdefault(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+        hass.config_entries.async_update_entry(
+            entry,
+            data=migrated_data,
+            version=2,
+        )
+        _LOGGER.info("Migrated Termogea config entry %s from version 1 to 2", entry.entry_id)
+
+    return True
 
 
 async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
