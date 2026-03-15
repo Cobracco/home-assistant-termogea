@@ -30,6 +30,19 @@ from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError, load_zone_map
 
 
+def _sanitize_connection_input(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Normalize connection values entered from forms."""
+    return {
+        **user_input,
+        CONF_HOST: str(user_input[CONF_HOST]).strip(),
+        CONF_USERNAME: str(user_input[CONF_USERNAME]).strip(),
+        CONF_PASSWORD: str(user_input[CONF_PASSWORD]).strip(),
+        CONF_ZONE_MAP_PATH: str(user_input.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)).strip(),
+        CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+        CONF_REQUEST_TIMEOUT: int(user_input[CONF_REQUEST_TIMEOUT]),
+    }
+
+
 def _connection_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     defaults = defaults or {}
     return vol.Schema(
@@ -242,16 +255,17 @@ class TermogeaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(user_input[CONF_HOST].strip().lower())
+            cleaned = _sanitize_connection_input(user_input)
+            await self.async_set_unique_id(cleaned[CONF_HOST].lower())
             self._abort_if_unique_id_configured()
 
             try:
                 client = TermogeaClient(
                     async_get_clientsession(self.hass),
-                    user_input[CONF_HOST],
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                    user_input[CONF_REQUEST_TIMEOUT],
+                    cleaned[CONF_HOST],
+                    cleaned[CONF_USERNAME],
+                    cleaned[CONF_PASSWORD],
+                    cleaned[CONF_REQUEST_TIMEOUT],
                 )
                 await client.async_login()
                 await client.async_check_thcontrol_status()
@@ -261,8 +275,8 @@ class TermogeaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             else:
                 entry = self.async_create_entry(
-                    title=f"Termogea {user_input[CONF_HOST]}",
-                    data=user_input,
+                    title=f"Termogea {cleaned[CONF_HOST]}",
+                    data=cleaned,
                 )
                 return entry
 
@@ -321,13 +335,14 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         defaults = {**self.config_entry.data, **self.config_entry.options}
         if user_input is not None:
+            cleaned = _sanitize_connection_input(user_input)
             try:
                 client = TermogeaClient(
                     async_get_clientsession(self.hass),
-                    user_input[CONF_HOST],
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                    user_input[CONF_REQUEST_TIMEOUT],
+                    cleaned[CONF_HOST],
+                    cleaned[CONF_USERNAME],
+                    cleaned[CONF_PASSWORD],
+                    cleaned[CONF_REQUEST_TIMEOUT],
                 )
                 await client.async_login()
                 await client.async_check_thcontrol_status()
@@ -349,7 +364,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
 
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={**self.config_entry.data, **user_input},
+                    data={**self.config_entry.data, **cleaned},
                     options=preserved_options,
                 )
                 return await self._async_finish_and_reload()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from ipaddress import ip_address
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -57,8 +58,40 @@ def _looks_like_legacy_name(name: str) -> bool:
 
 
 def _zone_index(zone_id: str) -> int | None:
-    match = re.search(r"(\d+)$", zone_id)
-    return int(match.group(1)) if match else None
+    for pattern in (r"(?:zone|zona)\D*(\d+)", r"(\d+)"):
+        match = re.search(pattern, zone_id, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _is_ipv4_or_ipv6(value: str) -> bool:
+    try:
+        ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve_entry_host(entry: ConfigEntry) -> tuple[str | None, bool]:
+    """Return best host candidate and whether entry data should be updated."""
+    current_host = str(entry.data.get(CONF_HOST, "")).strip()
+    if current_host and current_host != entry.data.get(CONF_HOST):
+        return current_host, True
+
+    if current_host and entry.title and current_host.lower() == entry.title.strip().lower():
+        unique_id = (entry.unique_id or "").strip()
+        if unique_id and unique_id != current_host and _is_ipv4_or_ipv6(unique_id):
+            return unique_id, True
+
+    if current_host:
+        return current_host, False
+
+    unique_id = (entry.unique_id or "").strip()
+    if unique_id:
+        return unique_id, True
+
+    return None, False
 
 
 def _looks_like_default_zone_name(name: str, zone_id: str) -> bool:
@@ -305,13 +338,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 options=migrated_options,
             )
 
-    host = entry.data.get(CONF_HOST)
+    host, should_update_host = _resolve_entry_host(entry)
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
     if not host or not username or not password:
         raise ConfigEntryNotReady(
             "Missing required Termogea connection settings (host/username/password). "
             "Open the integration and run Reconfigure."
+        )
+    if should_update_host:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_HOST: host},
         )
 
     zone_map_path = entry.data.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
