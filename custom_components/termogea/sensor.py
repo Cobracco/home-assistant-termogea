@@ -6,11 +6,13 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DATA_STORAGE, DOMAIN
+from .entity import controller_device_info, zone_device_info
 from .policy import evaluate_zone_policy, resolve_active_mode
 
 
@@ -86,6 +88,11 @@ class _PolicyBaseEntity(CoordinatorEntity):
     @callback
     def _async_handle_state_change(self, _event) -> None:
         self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        zone = self._storage.get_zone(self._zone_id)
+        return zone_device_info(self.coordinator.config_entry, zone)
 
 
 class TermogeaPolicyTextSensor(_PolicyBaseEntity, SensorEntity):
@@ -171,3 +178,7 @@ class TermogeaGlobalSensor(CoordinatorEntity, SensorEntity):
         if self._key == "configured_zones":
             return len(self._storage.config.zones)
         return None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return controller_device_info(self.coordinator.config_entry)

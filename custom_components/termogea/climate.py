@@ -9,6 +9,7 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -30,6 +31,7 @@ from .const import (
     DATA_STORAGE,
     DOMAIN,
 )
+from .entity import zone_device_info
 from .models import ZoneDefinition
 from .policy import evaluate_zone_policy
 
@@ -135,6 +137,10 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
             ATTR_ENABLED: zone.enabled,
             ATTR_MANUAL_OVERRIDE_ALLOWED: zone.manual_override_allowed,
         }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return zone_device_info(self.coordinator.config_entry, self._zone)
 
     async def async_set_temperature(self, **kwargs) -> None:
         temperature = kwargs.get("temperature")

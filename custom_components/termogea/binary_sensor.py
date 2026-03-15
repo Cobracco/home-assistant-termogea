@@ -5,11 +5,13 @@ from __future__ import annotations
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DATA_STORAGE, DOMAIN
+from .entity import zone_device_info
 from .policy import evaluate_zone_policy
 
 
@@ -97,6 +99,11 @@ class TermogeaZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @callback
     def _async_handle_state_change(self, _event) -> None:
         self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        zone = self._storage.get_zone(self._zone_id)
+        return zone_device_info(self.coordinator.config_entry, zone)
 
     @property
     def is_on(self) -> bool:
