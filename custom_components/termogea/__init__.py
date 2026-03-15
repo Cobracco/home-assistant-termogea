@@ -41,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to the latest version."""
-    if entry.version > 2:
+    if entry.version > 3:
         _LOGGER.error(
             "Cannot migrate Termogea entry %s: unsupported future version %s",
             entry.entry_id,
@@ -60,6 +60,36 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             version=2,
         )
         _LOGGER.info("Migrated Termogea config entry %s from version 1 to 2", entry.entry_id)
+        entry = hass.config_entries.async_get_entry(entry.entry_id) or entry
+
+    if entry.version == 2:
+        migrated_data = dict(entry.data)
+        migrated_options = dict(entry.options)
+        connection_keys = (
+            CONF_HOST,
+            CONF_USERNAME,
+            CONF_PASSWORD,
+            CONF_SCAN_INTERVAL,
+            CONF_REQUEST_TIMEOUT,
+            CONF_ZONE_MAP_PATH,
+        )
+
+        for key in connection_keys:
+            if key not in migrated_data and key in migrated_options:
+                migrated_data[key] = migrated_options[key]
+            migrated_options.pop(key, None)
+
+        migrated_data.setdefault(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
+        migrated_data.setdefault(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        migrated_data.setdefault(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+
+        hass.config_entries.async_update_entry(
+            entry,
+            data=migrated_data,
+            options=migrated_options,
+            version=3,
+        )
+        _LOGGER.info("Migrated Termogea config entry %s from version 2 to 3", entry.entry_id)
 
     return True
 
@@ -161,9 +191,18 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Termogea from a config entry."""
     options = {**entry.data, **entry.options}
+    host = options.get(CONF_HOST)
+    username = options.get(CONF_USERNAME)
+    password = options.get(CONF_PASSWORD)
+    if not host or not username or not password:
+        raise ConfigEntryNotReady(
+            "Missing required Termogea connection settings (host/username/password). "
+            "Open the integration and run Reconfigure."
+        )
+
     zone_map_path = options.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
-    scan_interval = options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    timeout = options.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+    scan_interval = int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    timeout = int(options.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
 
     storage = TermogeaStorageManager(hass, entry.entry_id)
     try:
@@ -185,9 +224,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client = TermogeaClient(
         async_get_clientsession(hass),
-        options[CONF_HOST],
-        options[CONF_USERNAME],
-        options[CONF_PASSWORD],
+        host,
+        username,
+        password,
         timeout,
     )
 

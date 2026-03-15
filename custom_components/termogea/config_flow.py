@@ -236,7 +236,7 @@ def _schedule_schema(defaults: ScheduleRule | None = None) -> vol.Schema:
 class TermogeaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Termogea."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -295,7 +295,10 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
 
     async def _async_finish_and_reload(self, data: dict[str, Any] | None = None) -> FlowResult:
         self.hass.async_create_task(self.hass.config_entries.async_reload(self.config_entry.entry_id))
-        return self.async_create_entry(title="", data=data or {})
+        merged_options = dict(self.config_entry.options)
+        if data:
+            merged_options.update(data)
+        return self.async_create_entry(title="", data=merged_options)
 
     async def async_step_init(self, _user_input: dict[str, Any] | None = None) -> FlowResult:
         await self._async_storage()
@@ -333,11 +336,23 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             except Exception:
                 errors["base"] = "cannot_connect"
             else:
+                preserved_options = dict(self.config_entry.options)
+                for key in (
+                    CONF_HOST,
+                    CONF_USERNAME,
+                    CONF_PASSWORD,
+                    CONF_SCAN_INTERVAL,
+                    CONF_REQUEST_TIMEOUT,
+                    CONF_ZONE_MAP_PATH,
+                ):
+                    preserved_options.pop(key, None)
+
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    options=user_input,
+                    data={**self.config_entry.data, **user_input},
+                    options=preserved_options,
                 )
-                return await self._async_finish_and_reload(user_input)
+                return await self._async_finish_and_reload()
 
         return self.async_show_form(
             step_id="connection",
