@@ -122,11 +122,6 @@ def _global_schema(defaults: GlobalConfig) -> vol.Schema:
                 )
             ),
             vol.Required("schedule_enabled", default=defaults.schedule_enabled): bool,
-            vol.Required("comfort_temp", default=defaults.comfort_temp): vol.Coerce(float),
-            vol.Required("eco_temp", default=defaults.eco_temp): vol.Coerce(float),
-            vol.Required("away_temp", default=defaults.away_temp): vol.Coerce(float),
-            vol.Required("night_temp", default=defaults.night_temp): vol.Coerce(float),
-            vol.Required("inactive_temp", default=defaults.inactive_temp): vol.Coerce(float),
             vol.Required(
                 "winter_comfort_temp",
                 default=defaults.winter_comfort_temp,
@@ -435,11 +430,13 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 season_mode=str(user_input["season_mode"]).lower(),
                 global_mode=str(user_input["global_mode"]),
                 auto_fallback_mode=str(user_input["auto_fallback_mode"]),
-                comfort_temp=float(user_input["comfort_temp"]),
-                eco_temp=float(user_input["eco_temp"]),
-                away_temp=float(user_input["away_temp"]),
-                night_temp=float(user_input["night_temp"]),
-                inactive_temp=float(user_input["inactive_temp"]),
+                # Keep legacy non-seasonal fields aligned with winter values
+                # for backward compatibility with existing policy math.
+                comfort_temp=float(user_input["winter_comfort_temp"]),
+                eco_temp=float(user_input["winter_eco_temp"]),
+                away_temp=float(user_input["winter_away_temp"]),
+                night_temp=float(user_input["winter_night_temp"]),
+                inactive_temp=float(user_input["winter_inactive_temp"]),
                 winter_comfort_temp=float(user_input["winter_comfort_temp"]),
                 winter_eco_temp=float(user_input["winter_eco_temp"]),
                 winter_away_temp=float(user_input["winter_away_temp"]),
