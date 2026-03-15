@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/Cobracco/home-assistant-termogea/issues",
   "loggers": ["custom_components.termogea"],
   "requirements": [],
-  "version": "0.1.7"
+  "version": "0.1.8"
 }

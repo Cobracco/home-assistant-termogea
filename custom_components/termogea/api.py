@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
+import re
 from http import HTTPStatus
 from typing import Any
 
@@ -158,6 +160,22 @@ class TermogeaClient:
             raise TermogeaApiError(
                 f"Unable to parse thcontrol status: {text!r}"
             ) from err
+
+    async def async_fetch_zone_names(self) -> dict[int, str]:
+        """Read configured zone names from setup page tabs."""
+        text = await self._async_request("GET", "/webgui/tsg/setup.php?lang=it")
+        pattern = re.compile(
+            r'<li[^>]*id="tab_zone(?P<idx>\d+)"[^>]*>.*?<a[^>]*>(?P<name>.*?)</a>',
+            re.IGNORECASE | re.DOTALL,
+        )
+        names: dict[int, str] = {}
+        for match in pattern.finditer(text):
+            idx = int(match.group("idx"))
+            raw_name = html.unescape(match.group("name"))
+            clean_name = " ".join(raw_name.replace("\xa0", " ").split())
+            if clean_name:
+                names[idx] = clean_name
+        return names
 
     async def async_read_register(
         self,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -55,6 +56,53 @@ def _looks_like_legacy_name(name: str) -> bool:
     return lowered.startswith("termogea_") or lowered.endswith("_device")
 
 
+def _zone_index(zone_id: str) -> int | None:
+    match = re.search(r"(\d+)$", zone_id)
+    return int(match.group(1)) if match else None
+
+
+def _looks_like_default_zone_name(name: str, zone_id: str) -> bool:
+    lowered = name.strip().lower()
+    if not lowered:
+        return True
+    if lowered == zone_id.strip().lower():
+        return True
+    return (
+        lowered.startswith("termogea_")
+        or lowered.startswith("zona ")
+        or lowered.startswith("zone ")
+        or lowered.endswith("_device")
+    )
+
+
+async def _sync_zone_names_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Import human-friendly zone names from the Termogea setup page."""
+    try:
+        remote_names = await client.async_fetch_zone_names()
+    except TermogeaApiError:
+        return
+    if not remote_names:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        remote_name = remote_names.get(idx)
+        if not remote_name:
+            continue
+        if _looks_like_default_zone_name(zone.name, zone.zone_id) and zone.name != remote_name:
+            zone.name = remote_name
+            changed = True
+
+    if changed:
+        await storage.async_save()
+
+
 def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list[ZoneDefinition]) -> None:
     """Align legacy zone device names with configured zone names."""
     registry = dr.async_get(hass)
@@ -68,9 +116,18 @@ def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list
         if device is None:
             continue
         current_name = device.name or ""
-        if device.name_by_user is None or _looks_like_legacy_name(current_name):
+        update_kwargs: dict[str, str] = {}
+
+        if device.name_by_user is None:
+            if _looks_like_legacy_name(current_name) and current_name != desired:
+                update_kwargs["name"] = desired
+        elif _looks_like_legacy_name(device.name_by_user) and device.name_by_user != desired:
+            update_kwargs["name_by_user"] = desired
             if current_name != desired:
-                registry.async_update_device(device.id, name=desired)
+                update_kwargs["name"] = desired
+
+        if update_kwargs:
+            registry.async_update_device(device.id, **update_kwargs)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -290,6 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await client.async_login()
         await client.async_check_thcontrol_status()
+        await _sync_zone_names_from_controller(storage, client)
     except TermogeaAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except TermogeaApiError as err:
