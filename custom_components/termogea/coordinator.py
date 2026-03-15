@@ -47,38 +47,59 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                 target_value = previous.target_temperature if previous is not None else None
                 hvac_mode = previous.hvac_mode if previous is not None else None
 
-                try:
-                    if zone.current_temperature is not None:
+                if zone.current_temperature is not None:
+                    try:
                         current_raw, current_value = await self.client.async_read_register(
                             zone.current_temperature
                         )
                         raw_values["current_temperature"] = current_raw
+                    except TermogeaApiError as err:
+                        _LOGGER.warning(
+                            "Zone %s current temperature read failed: %s",
+                            zone.zone_id,
+                            err,
+                        )
 
-                    if zone.current_humidity is not None:
+                if zone.current_humidity is not None:
+                    try:
                         humidity_raw, humidity_value = await self.client.async_read_register(
                             zone.current_humidity
                         )
                         raw_values["current_humidity"] = humidity_raw
+                    except TermogeaApiError as err:
+                        _LOGGER.warning(
+                            "Zone %s humidity read failed: %s",
+                            zone.zone_id,
+                            err,
+                        )
 
-                    if zone.target_temperature is not None:
+                if zone.target_temperature is not None:
+                    try:
                         target_raw, target_value = await self.client.async_read_register(
                             zone.target_temperature
                         )
                         raw_values["target_temperature"] = target_raw
+                    except TermogeaApiError as err:
+                        _LOGGER.warning(
+                            "Zone %s target temperature read failed: %s",
+                            zone.zone_id,
+                            err,
+                        )
 
-                    if zone.hvac_mode is not None:
+                if zone.hvac_mode is not None:
+                    try:
                         hvac_raw, _ = await self.client.async_read_register(zone.hvac_mode)
                         raw_values["hvac_mode"] = hvac_raw
                         if hvac_raw == zone.hvac_mode.off_value:
                             hvac_mode = "off"
                         elif hvac_raw == zone.hvac_mode.heat_value:
                             hvac_mode = "heat"
-                except TermogeaApiError as err:
-                    _LOGGER.warning(
-                        "Zone %s read failed, keeping last known snapshot: %s",
-                        zone.zone_id,
-                        err,
-                    )
+                    except TermogeaApiError as err:
+                        _LOGGER.warning(
+                            "Zone %s hvac mode read failed: %s",
+                            zone.zone_id,
+                            err,
+                        )
 
                 snapshots[zone.zone_id] = ZoneSnapshot(
                     current_temperature=current_value,

@@ -146,6 +146,62 @@ class TermogeaClient:
         return ""
 
     @staticmethod
+    def _find_register_by_names(
+        register_catalog: dict[str, tuple[RegisterDefinition, str]],
+        names: list[str],
+    ) -> RegisterDefinition | None:
+        """Return first matching register definition by case-insensitive name."""
+        if not names:
+            return None
+        lowered_catalog = {name.lower(): definition for name, (definition, _mode) in register_catalog.items()}
+        for candidate in names:
+            if not candidate:
+                continue
+            found = lowered_catalog.get(candidate.lower())
+            if found is not None:
+                return found
+        return None
+
+    @staticmethod
+    def _humidity_name_candidates_from_temperature_name(
+        tnow_name: str,
+        zone_index: int,
+    ) -> list[str]:
+        """Generate likely humidity register names from the temperature register name."""
+        if not tnow_name:
+            return []
+
+        candidates: list[str] = []
+        substitutions = (
+            ("TNOW", "HNOW"),
+            ("TNOW", "RHNOW"),
+            ("TNOW", "HUM"),
+            ("TNOW", "UMID"),
+            ("TEMP", "HUM"),
+            ("TEMP", "RH"),
+        )
+        for source, target in substitutions:
+            if source in tnow_name.upper():
+                candidate = re.sub(source, target, tnow_name, flags=re.IGNORECASE)
+                if candidate and candidate not in candidates:
+                    candidates.append(candidate)
+
+        zone_suffixes = (
+            f"HNOW_{zone_index}",
+            f"RHNOW_{zone_index}",
+            f"HUM_{zone_index}",
+            f"UMID_{zone_index}",
+            f"HNOW{zone_index}",
+            f"RHNOW{zone_index}",
+            f"HUM{zone_index}",
+            f"UMID{zone_index}",
+        )
+        for suffix in zone_suffixes:
+            if suffix not in candidates:
+                candidates.append(suffix)
+        return candidates
+
+    @staticmethod
     def _guess_zone_humidity_register(
         register_catalog: dict[str, tuple[RegisterDefinition, str]],
         zone_index: int,
@@ -157,11 +213,11 @@ class TermogeaClient:
         for name, (definition, mode) in register_catalog.items():
             lower = name.lower()
             humidity_score = 0
-            if re.search(r"(humidity|humid|umid)", lower):
+            if re.search(r"(humidity|humid|umid|hnow|rhnow)", lower):
                 humidity_score += 5
             if re.search(r"\brh\b", lower):
                 humidity_score += 4
-            if re.search(r"\bur\b", lower):
+            if re.search(r"\bur\b|\burh\b", lower):
                 humidity_score += 2
             if humidity_score == 0:
                 continue
@@ -174,13 +230,13 @@ class TermogeaClient:
             elif re.search(rf"[_\-\s]0*{zone_index}\b", lower):
                 zone_score = 1
 
-            mode_score = 2 if "R" in mode else -1
+            mode_score = 2 if "R" in mode else 0
             score = humidity_score + zone_score + mode_score
             if score > best_score:
                 best_score = score
                 best = definition
 
-        return best if best_score >= 6 else None
+        return best if best_score >= 4 else None
 
     async def async_login(self) -> None:
         """Authenticate against the Termogea login form."""
@@ -517,6 +573,11 @@ class TermogeaClient:
 
             current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
             humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
+            if humidity_def is None and tnow_name:
+                humidity_def = self._find_register_by_names(
+                    register_catalog,
+                    self._humidity_name_candidates_from_temperature_name(tnow_name, idx),
+                )
             if humidity_def is None:
                 humidity_def = self._guess_zone_humidity_register(register_catalog, idx)
             target_tuple = register_catalog.get(tset_name) if tset_name else None

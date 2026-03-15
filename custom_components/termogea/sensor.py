@@ -233,7 +233,13 @@ class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         zone = self._storage.get_zone(self._zone_id)
-        return {
+        attrs: dict[str, object] = {
             "zone_id": zone.zone_id,
             "humidity_mapping_configured": zone.current_humidity is not None,
         }
+        if zone.current_humidity is not None:
+            attrs["humidity_register_mod"] = zone.current_humidity.mod
+            attrs["humidity_register_reg"] = zone.current_humidity.reg
+            attrs["humidity_register_scale"] = zone.current_humidity.scale
+            attrs["humidity_register_precision"] = zone.current_humidity.precision
+        return attrs
