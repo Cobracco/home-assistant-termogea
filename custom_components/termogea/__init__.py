@@ -190,19 +190,42 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Termogea from a config entry."""
-    options = {**entry.data, **entry.options}
-    host = options.get(CONF_HOST)
-    username = options.get(CONF_USERNAME)
-    password = options.get(CONF_PASSWORD)
+    connection_keys = (
+        CONF_HOST,
+        CONF_USERNAME,
+        CONF_PASSWORD,
+        CONF_SCAN_INTERVAL,
+        CONF_REQUEST_TIMEOUT,
+        CONF_ZONE_MAP_PATH,
+    )
+    if any(key in entry.options for key in connection_keys):
+        migrated_data = dict(entry.data)
+        migrated_options = dict(entry.options)
+        changed = False
+        for key in connection_keys:
+            if key in migrated_options:
+                migrated_data.setdefault(key, migrated_options[key])
+                migrated_options.pop(key, None)
+                changed = True
+        if changed:
+            hass.config_entries.async_update_entry(
+                entry,
+                data=migrated_data,
+                options=migrated_options,
+            )
+
+    host = entry.data.get(CONF_HOST)
+    username = entry.data.get(CONF_USERNAME)
+    password = entry.data.get(CONF_PASSWORD)
     if not host or not username or not password:
         raise ConfigEntryNotReady(
             "Missing required Termogea connection settings (host/username/password). "
             "Open the integration and run Reconfigure."
         )
 
-    zone_map_path = options.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
-    scan_interval = int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
-    timeout = int(options.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
+    zone_map_path = entry.data.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
+    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    timeout = int(entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
 
     storage = TermogeaStorageManager(hass, entry.entry_id)
     try:

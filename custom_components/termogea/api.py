@@ -38,6 +38,7 @@ class TermogeaClient:
         self._timeout = timeout
         self._login_lock = asyncio.Lock()
         self._logged_in = False
+        self._php_session_id: str | None = None
 
     @property
     def base_url(self) -> str:
@@ -49,7 +50,18 @@ class TermogeaClient:
     async def async_force_relogin(self) -> None:
         """Forget the current login state."""
         self._logged_in = False
+        self._php_session_id = None
         self._session.cookie_jar.clear()
+
+    def _request_headers(self) -> dict[str, str] | None:
+        if self._php_session_id:
+            return {"Cookie": f"PHPSESSID={self._php_session_id}"}
+        return None
+
+    def _store_php_session(self, response) -> None:
+        cookie = response.cookies.get("PHPSESSID")
+        if cookie is not None and cookie.value:
+            self._php_session_id = cookie.value
 
     async def async_login(self) -> None:
         """Authenticate against the Termogea login form."""
@@ -60,16 +72,20 @@ class TermogeaClient:
             try:
                 async with self._session.get(
                     f"{self.base_url}/",
+                    headers=self._request_headers(),
                     timeout=self._timeout,
-                ):
-                    pass
+                ) as response:
+                    self._store_php_session(response)
+                    await response.read()
 
                 async with self._session.post(
                     f"{self.base_url}/",
                     data={"username": self._username, "password": self._password},
+                    headers=self._request_headers(),
                     allow_redirects=False,
                     timeout=self._timeout,
                 ) as response:
+                    self._store_php_session(response)
                     location = response.headers.get("Location", "")
                     body = await response.text()
             except ClientError as err:
@@ -103,8 +119,10 @@ class TermogeaClient:
                 method,
                 f"{self.base_url}{path}",
                 data=data,
+                headers=self._request_headers(),
                 timeout=self._timeout,
             ) as response:
+                self._store_php_session(response)
                 text = await response.text()
         except ClientError as err:
             raise TermogeaApiError(f"HTTP request failed for {path}: {err}") from err
