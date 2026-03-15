@@ -80,13 +80,15 @@ Prerequisiti HACS frontend:
 - `button-card`
 - `auto-entities`
 
-## Scheda Lovelace Termogea (picker UI)
+## Scheda Lovelace Termogea (repo separata)
 
-L'integrazione registra automaticamente una card custom:
+La card Lovelace e stata separata dal backend integrazione.
 
+Repository frontend HACS:
+
+- `https://github.com/Cobracco/home-assistant-termogea-card`
+- categoria HACS: `Dashboard`
 - tipo card: `custom:termogea-zone-grid-card`
-- file frontend: `/termogea/termogea-zone-grid-card.js`
-- visibile in **Aggiungi scheda** (sezione custom) dopo riavvio Home Assistant
 
 Esempio configurazione minima:
 
@@ -116,7 +118,6 @@ Risolti nelle ultime iterazioni (fino a `0.1.11`):
 - bootstrap iniziale da controller Termogea (`telegea.tar`) con import zone/soglie/schedule base
 - nomi zona sincronizzati dal controller (no default `Termogea_zona_X_device` quando disponibili)
 - salvataggio form policy zona separato dalla form mapping tecnico
-- nuova card Lovelace custom registrata automaticamente nel picker schede
 - esposizione umidita corrente su climate e sensore dedicato per zona (quando mappata)
 
 ## Sviluppo

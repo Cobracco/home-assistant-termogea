@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from inspect import isawaitable
 from ipaddress import ip_address
-from pathlib import Path
 
 import voluptuous as vol
-from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -44,14 +41,6 @@ from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
-LOVELACE_CARD_STATIC_URL = "/termogea/termogea-zone-grid-card.js"
-LOVELACE_CARD_FILE = Path(__file__).parent / "frontend" / "termogea-zone-grid-card.js"
-DATA_LOVELACE_CARD_REGISTERED = "lovelace_card_registered"
-
-try:
-    from homeassistant.components.http import StaticPathConfig
-except ImportError:  # pragma: no cover - compatibility fallback
-    StaticPathConfig = None
 
 
 def _zone_identifiers(entry_id: str, zone_id: str) -> tuple[str, ...]:
@@ -118,71 +107,6 @@ def _looks_like_default_zone_name(name: str, zone_id: str) -> bool:
         or lowered.startswith("zone ")
         or lowered.endswith("_device")
     )
-
-
-def _lovelace_card_module_url() -> str:
-    """Return card module URL with cache-busting token."""
-    try:
-        version_token = str(int(LOVELACE_CARD_FILE.stat().st_mtime))
-    except OSError:
-        version_token = "1"
-    return f"{LOVELACE_CARD_STATIC_URL}?v={version_token}"
-
-
-async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
-    """Expose and auto-load the custom Lovelace card module."""
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    if domain_data.get(DATA_LOVELACE_CARD_REGISTERED):
-        return
-    if not hasattr(hass, "http"):
-        _LOGGER.warning("Home Assistant HTTP component not available; Termogea card not registered")
-        return
-    if not LOVELACE_CARD_FILE.exists():
-        _LOGGER.warning("Termogea Lovelace card file missing: %s", LOVELACE_CARD_FILE)
-        return
-
-    try:
-        if hasattr(hass.http, "async_register_static_paths") and StaticPathConfig is not None:
-            await hass.http.async_register_static_paths(
-                [
-                    StaticPathConfig(
-                        LOVELACE_CARD_STATIC_URL,
-                        str(LOVELACE_CARD_FILE),
-                        cache_headers=False,
-                    )
-                ]
-            )
-        elif hasattr(hass.http, "register_static_path"):
-            hass.http.register_static_path(
-                LOVELACE_CARD_STATIC_URL,
-                str(LOVELACE_CARD_FILE),
-                cache_headers=False,
-            )
-        else:
-            _LOGGER.warning("Home Assistant HTTP API for static resources not available")
-            return
-    except RuntimeError:
-        # Path may already be registered after a reload.
-        pass
-
-    module_url = _lovelace_card_module_url()
-
-    if hasattr(frontend, "async_register_extra_module_url"):
-        maybe_awaitable = frontend.async_register_extra_module_url(
-            hass,
-            module_url,
-        )
-        if isawaitable(maybe_awaitable):
-            await maybe_awaitable
-    elif hasattr(frontend, "add_extra_js_url"):
-        maybe_awaitable = frontend.add_extra_js_url(hass, module_url)
-        if isawaitable(maybe_awaitable):
-            await maybe_awaitable
-    else:
-        _LOGGER.warning("Home Assistant frontend API for extra JS resources not available")
-        return
-
-    domain_data[DATA_LOVELACE_CARD_REGISTERED] = True
 
 
 async def _sync_zone_names_from_controller(
@@ -353,7 +277,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     """Set up services for the integration."""
     hass.data.setdefault(DOMAIN, {})
-    await _async_register_lovelace_resources(hass)
 
     async def _import_legacy_yaml_service(call: ServiceCall) -> None:
         path = call.data[CONF_ZONE_MAP_PATH]
