@@ -7,6 +7,10 @@ import_legacy_yaml:
       description: Path of the legacy YAML file inside the Home Assistant config directory.
       example: termogea_zones.yaml
 
+import_controller_config:
+  name: Import controller config
+  description: Download and import the active configuration directly from the Termogea controller.
+
 force_relogin:
   name: Force relogin
   description: Clear the current PHP session and re-authenticate on the next request.

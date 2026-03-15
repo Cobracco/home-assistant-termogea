@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import configparser
+import io
 import html
 import json
 import re
+import tarfile
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
 
 from aiohttp import ClientError, ClientSession
 
-from .models import RegisterDefinition
+from .models import GlobalConfig, RegisterDefinition, ScheduleRule, ZoneDefinition
 
 
 class TermogeaApiError(Exception):
@@ -20,6 +25,17 @@ class TermogeaApiError(Exception):
 
 class TermogeaAuthError(TermogeaApiError):
     """Raised when authentication fails."""
+
+
+WEEKDAY_MAP: Mapping[str, str] = {
+    "monday": "mon",
+    "tuesday": "tue",
+    "wednesday": "wed",
+    "thursday": "thu",
+    "friday": "fri",
+    "saturday": "sat",
+    "sunday": "sun",
+}
 
 
 class TermogeaClient:
@@ -64,6 +80,49 @@ class TermogeaClient:
         cookie = response.cookies.get("PHPSESSID")
         if cookie is not None and cookie.value:
             self._php_session_id = cookie.value
+
+    @staticmethod
+    def _strip_quotes(value: str | None) -> str:
+        if value is None:
+            return ""
+        return value.strip().strip("'").strip('"').strip()
+
+    @staticmethod
+    def _safe_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _safe_int(value: Any) -> int | None:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    @staticmethod
+    def _precision_from_divisor(divisor: float) -> int:
+        if divisor <= 0:
+            return 1
+        precision = 0
+        scaled = divisor
+        while scaled >= 10 and abs(scaled - round(scaled)) < 1e-9 and int(round(scaled)) % 10 == 0:
+            precision += 1
+            scaled /= 10
+        if precision == 0 and abs(divisor - 1.0) > 1e-9:
+            precision = 1
+        return precision
+
+    @staticmethod
+    def _mode_from_temp(temp: float, comfort: float, eco: float, away: float) -> str:
+        if temp >= comfort - 0.1:
+            return "comfort"
+        if temp >= eco - 0.1:
+            return "eco"
+        if temp <= away + 0.1:
+            return "away"
+        return "night"
 
     async def async_login(self) -> None:
         """Authenticate against the Termogea login form."""
@@ -148,6 +207,49 @@ class TermogeaClient:
 
         return text
 
+    async def _async_request_bytes(
+        self,
+        method: str,
+        path: str,
+        *,
+        data: dict[str, Any] | None = None,
+        allow_retry: bool = True,
+    ) -> bytes:
+        await self.async_login()
+
+        try:
+            async with self._session.request(
+                method,
+                f"{self.base_url}{path}",
+                data=data,
+                headers=self._request_headers(),
+                timeout=self._timeout,
+            ) as response:
+                self._store_php_session(response)
+                payload = await response.read()
+                text = payload.decode(errors="ignore")
+        except ClientError as err:
+            raise TermogeaApiError(f"HTTP request failed for {path}: {err}") from err
+
+        if (
+            response.status in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}
+            or "<h5 class=\"white-text" in text
+        ):
+            await self.async_force_relogin()
+            if allow_retry:
+                return await self._async_request_bytes(
+                    method,
+                    path,
+                    data=data,
+                    allow_retry=False,
+                )
+            raise TermogeaAuthError("Termogea session expired")
+
+        if response.status >= HTTPStatus.BAD_REQUEST:
+            raise TermogeaApiError(f"Unexpected status {response.status} for {path}")
+
+        return payload
+
     async def async_check_thcontrol_status(self) -> int:
         """Read thcontrol service status."""
         text = await self._async_request(
@@ -176,6 +278,256 @@ class TermogeaClient:
             if clean_name:
                 names[idx] = clean_name
         return names
+
+    async def async_download_controller_file(self, remote_path: str) -> bytes:
+        """Download one controller-side file through the web GUI endpoint."""
+        encoded = quote(remote_path, safe="")
+        return await self._async_request_bytes(
+            "GET",
+            f"/webgui/tcg/download.php?filename={encoded}",
+        )
+
+    @staticmethod
+    def _load_ini(raw_text: str) -> configparser.ConfigParser:
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.optionxform = str
+        parser.read_string(raw_text)
+        return parser
+
+    @staticmethod
+    def _parse_reg_list(raw_text: str) -> dict[str, tuple[RegisterDefinition, str]]:
+        catalog: dict[str, tuple[RegisterDefinition, str]] = {}
+        lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+        for line in lines[1:]:
+            parts = line.split("\t")
+            if len(parts) < 8:
+                continue
+            _, mod, reg, name, divisor, mode, *_ = parts
+            name = name.strip()
+            if not name:
+                continue
+            try:
+                mod_int = int(mod)
+                reg_int = int(reg)
+            except ValueError:
+                continue
+            scale = TermogeaClient._safe_float(divisor, 1.0) or 1.0
+            definition = RegisterDefinition(
+                mod=mod_int,
+                reg=reg_int,
+                scale=scale,
+                precision=TermogeaClient._precision_from_divisor(scale),
+            )
+            catalog[name] = (definition, mode.strip().upper())
+        return catalog
+
+    def _parse_schedule_rules(
+        self,
+        raw_text: str,
+        comfort_temp: float,
+        eco_temp: float,
+        away_temp: float,
+    ) -> list[ScheduleRule]:
+        try:
+            payload = json.loads(raw_text)
+        except json.JSONDecodeError:
+            return []
+
+        daily = payload.get("daily_schedule")
+        if not isinstance(daily, list):
+            return []
+
+        rules: list[ScheduleRule] = []
+        rule_num = 1
+        for day_info in daily:
+            if not isinstance(day_info, dict):
+                continue
+            weekday_raw = str(day_info.get("weekday", "")).strip().lower()
+            day = WEEKDAY_MAP.get(weekday_raw)
+            if not day:
+                continue
+            periods = day_info.get("times_of_operation")
+            if not isinstance(periods, list):
+                continue
+            for block in periods:
+                if not isinstance(block, dict):
+                    continue
+                start = str(block.get("start", "")).strip()
+                end = str(block.get("stop", "")).strip()
+                if not start or not end:
+                    continue
+                if end == "24:00":
+                    end = "23:59"
+                temp = self._safe_float(block.get("temp"), comfort_temp)
+                mode = self._mode_from_temp(temp, comfort_temp, eco_temp, away_temp)
+                if start == end:
+                    continue
+                rules.append(
+                    ScheduleRule(
+                        rule_id=f"import_{day}_{rule_num}",
+                        name=f"Import {day.upper()} {rule_num}",
+                        days=[day],
+                        start=start,
+                        end=end,
+                        mode=mode,
+                    )
+                )
+                rule_num += 1
+        return rules
+
+    async def async_fetch_controller_bootstrap(
+        self,
+    ) -> tuple[GlobalConfig, list[ZoneDefinition]]:
+        """Build initial HA runtime config from Termogea controller files."""
+        bundle_bytes = await self.async_download_controller_file("/media/data/config/telegea.tar")
+        try:
+            archive = tarfile.open(fileobj=io.BytesIO(bundle_bytes))
+        except (tarfile.TarError, OSError) as err:
+            raise TermogeaApiError(f"Invalid controller configuration archive: {err}") from err
+
+        def _read_member(name: str) -> str | None:
+            member = archive.extractfile(name)
+            if member is None:
+                return None
+            return member.read().decode(errors="ignore")
+
+        zone_names_raw = _read_member("zone_names.json")
+        reg_list_raw = _read_member("reg_list.txt")
+        conf_raw = _read_member("telegea.conf")
+        custom_raw = _read_member("telegea_thcontrol_custom.conf")
+        archive.close()
+
+        if reg_list_raw is None or conf_raw is None:
+            raise TermogeaApiError("Controller archive missing mandatory files (reg_list.txt / telegea.conf)")
+
+        names_by_zone: dict[int, str] = {}
+        if zone_names_raw:
+            try:
+                parsed_names = json.loads(zone_names_raw)
+                for item in parsed_names.get("names", []):
+                    zone_number = self._safe_int(item.get("zone"))
+                    zone_name = str(item.get("name", "")).strip()
+                    if zone_number and zone_name:
+                        names_by_zone[zone_number] = zone_name
+            except (TypeError, ValueError, json.JSONDecodeError):
+                names_by_zone = {}
+
+        register_catalog = self._parse_reg_list(reg_list_raw)
+        parser = self._load_ini(conf_raw)
+        custom_parser = self._load_ini(custom_raw) if custom_raw else configparser.ConfigParser(interpolation=None)
+        custom_parser.optionxform = str
+
+        base_global = parser["thcontrol"] if parser.has_section("thcontrol") else {}
+        custom_global = custom_parser["thcontrol"] if custom_parser.has_section("thcontrol") else {}
+
+        t_min = self._safe_float(
+            custom_global.get("THC_T_MIN", base_global.get("THC_T_MIN", 16.0)),
+            16.0,
+        )
+        t_max = self._safe_float(
+            custom_global.get("THC_T_MAX", base_global.get("THC_T_MAX", 30.0)),
+            30.0,
+        )
+        comfort = round((t_min + t_max) / 2, 1)
+        eco = round((comfort + t_min) / 2, 1)
+        away = round(t_min, 1)
+        night = round((comfort + eco) / 2, 1)
+        inactive = away
+
+        zones: list[ZoneDefinition] = []
+        for idx in range(1, 13):
+            section_name = f"thcontrol_zone{idx}"
+            if not parser.has_section(section_name):
+                continue
+            section = parser[section_name]
+            custom_section = custom_parser[section_name] if custom_parser.has_section(section_name) else {}
+
+            tnow_name = self._strip_quotes(section.get("THC_TNOW_REG_NAME", ""))
+            tset_name = self._strip_quotes(section.get("THC_TSET_REG_NAME", ""))
+            onoff_name = self._strip_quotes(section.get("THC_ONOFF_REG_NAME", ""))
+
+            current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
+            target_tuple = register_catalog.get(tset_name) if tset_name else None
+            target_def = None
+            if target_tuple is not None and "W" in target_tuple[1]:
+                target_def = target_tuple[0]
+
+            hvac_def = None
+            hvac_tuple = register_catalog.get(onoff_name) if onoff_name else None
+            on_val = self._safe_int(section.get("THC_ONOFF_REG_VAL_ON"))
+            off_val = self._safe_int(section.get("THC_ONOFF_REG_VAL_OFF"))
+            if hvac_tuple is not None and on_val is not None and off_val is not None and "W" in hvac_tuple[1]:
+                hvac_def = RegisterDefinition(
+                    mod=hvac_tuple[0].mod,
+                    reg=hvac_tuple[0].reg,
+                    scale=hvac_tuple[0].scale,
+                    precision=hvac_tuple[0].precision,
+                    off_value=off_val,
+                    heat_value=on_val,
+                )
+
+            zone_comfort = self._safe_float(
+                custom_section.get("THC_D_SETPOINT1", comfort),
+                comfort,
+            )
+            zone_eco = self._safe_float(
+                custom_section.get("THC_D_SETPOINT2", eco),
+                eco,
+            )
+            zone_enabled = str(section.get("THC_ZONE_ENABLED", "true")).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+
+            zones.append(
+                ZoneDefinition(
+                    zone_id=f"zona_{idx}",
+                    name=names_by_zone.get(idx, f"Zona {idx}"),
+                    current_temperature=current_def,
+                    target_temperature=target_def,
+                    hvac_mode=hvac_def,
+                    comfort_temp=zone_comfort,
+                    eco_temp=zone_eco,
+                    away_temp=away,
+                    night_temp=night,
+                    inactive_temp=inactive,
+                    enabled=zone_enabled,
+                )
+            )
+
+        rules: list[ScheduleRule] = []
+        if parser.has_section("thcontrol_zone1"):
+            zone1 = parser["thcontrol_zone1"]
+            win_path = self._strip_quotes(zone1.get("THC_TPRG_CONF_FILE_WIN", ""))
+            if win_path:
+                try:
+                    win_schedule = await self.async_download_controller_file(win_path)
+                    rules = self._parse_schedule_rules(
+                        win_schedule.decode(errors="ignore"),
+                        comfort_temp=comfort,
+                        eco_temp=eco,
+                        away_temp=away,
+                    )
+                except TermogeaApiError:
+                    rules = []
+
+        global_config = GlobalConfig(
+            global_enabled=True,
+            automations_enabled=True,
+            allow_common_without_people=False,
+            global_mode="auto",
+            auto_fallback_mode="eco",
+            comfort_temp=comfort,
+            eco_temp=eco,
+            away_temp=away,
+            night_temp=night,
+            inactive_temp=inactive,
+            schedule_enabled=bool(rules),
+            schedule_rules=rules,
+        )
+        return global_config, zones
 
     async def async_read_register(
         self,

@@ -31,6 +31,7 @@ from .const import (
     SERVICE_APPLY_ALL_ZONE_POLICIES,
     SERVICE_APPLY_ZONE_POLICY,
     SERVICE_FORCE_RELOGIN,
+    SERVICE_IMPORT_CONTROLLER_CONFIG,
     SERVICE_IMPORT_LEGACY_YAML,
 )
 from .coordinator import TermogeaDataUpdateCoordinator
@@ -136,6 +137,23 @@ async def _sync_zone_names_from_controller(
         await storage.async_save()
 
 
+async def _bootstrap_storage_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> bool:
+    """Initialize persistent config from Termogea controller files."""
+    try:
+        global_config, zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return False
+    if not zones:
+        return False
+    storage.config.global_config = global_config
+    storage.config.zones = zones
+    await storage.async_save()
+    return True
+
+
 def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list[ZoneDefinition]) -> None:
     """Align legacy zone device names with configured zone names."""
     registry = dr.async_get(hass)
@@ -235,6 +253,14 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             await client.async_force_relogin()
             await entry_data[DATA_COORDINATOR].async_request_refresh()
 
+    async def _import_controller_config_service(_call: ServiceCall) -> None:
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            client: TermogeaClient = entry_data[DATA_CLIENT]
+            storage: TermogeaStorageManager = entry_data[DATA_STORAGE]
+            imported = await _bootstrap_storage_from_controller(storage, client)
+            if imported:
+                await hass.config_entries.async_reload(entry_id)
+
     async def _apply_policy(zone: ZoneDefinition, entry_data: dict) -> None:
         coordinator: TermogeaDataUpdateCoordinator = entry_data[DATA_COORDINATOR]
         client: TermogeaClient = entry_data[DATA_CLIENT]
@@ -295,6 +321,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             SERVICE_IMPORT_LEGACY_YAML,
             _import_legacy_yaml_service,
             schema=vol.Schema({vol.Required(CONF_ZONE_MAP_PATH): str}),
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_IMPORT_CONTROLLER_CONFIG,
+            _import_controller_config_service,
         )
         hass.services.async_register(DOMAIN, SERVICE_FORCE_RELOGIN, _force_relogin_service)
         hass.services.async_register(
@@ -385,7 +416,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await client.async_login()
         await client.async_check_thcontrol_status()
-        await _sync_zone_names_from_controller(storage, client)
+        if not storage.config.zones:
+            imported = await _bootstrap_storage_from_controller(storage, client)
+            if imported:
+                _LOGGER.info(
+                    "Initialized Termogea config from controller (%s zones imported)",
+                    len(storage.config.zones),
+                )
+        if storage.config.zones:
+            await _sync_zone_names_from_controller(storage, client)
     except TermogeaAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except TermogeaApiError as err:

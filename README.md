@@ -15,6 +15,7 @@ Custom integration Home Assistant per controllare e configurare impianti **Termo
 - login locale verso il controller Termogea
 - entita `climate` per zona
 - configurazione persistente via UI Home Assistant
+- bootstrap iniziale automatico da configurazione reale della centralina
 - CRUD zone dalla UI dell'integrazione
 - associazione persone e sensori di presenza per zona
 - preset persistenti:
@@ -63,6 +64,7 @@ Se hai un file `termogea_zones.yaml`, puoi importarlo:
 
 - dalla UI di configurazione dell'integrazione
 - oppure con il servizio `termogea.import_legacy_yaml`
+- oppure forzare import completo da controller con `termogea.import_controller_config`
 
 ## Dashboard UI stile app
 

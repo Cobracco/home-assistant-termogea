@@ -12,6 +12,12 @@ Asset grafici repository:
 - login e polling locale verso il controller Termogea
 - entita `climate` per zona con mapping registri `mod/reg`
 - configurazione persistente via UI Home Assistant
+- bootstrap iniziale automatico da controller Termogea (`telegea.tar`):
+  - zone
+  - nomi zona
+  - registri temperatura attuale/target
+  - soglie globali e setpoint principali
+  - fasce orarie (import base da profilo termostato)
 - CRUD zone dalla UI dell’integrazione
 - associazione persone e sensori di presenza per zona
 - preset persistenti per zona:
@@ -50,6 +56,12 @@ Se hai un vecchio file `termogea_zones.yaml`, puoi importarlo:
 
 - dalla UI di configurazione dell’integrazione
 - oppure con il servizio `termogea.import_legacy_yaml`
+
+### Import da controller
+
+Puoi forzare in qualsiasi momento la re-importazione dalla centralina con:
+
+- servizio `termogea.import_controller_config`
 
 ## Limitazioni
 

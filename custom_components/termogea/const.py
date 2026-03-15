@@ -28,6 +28,7 @@ DATA_ZONE_MAP = "zone_map"
 DATA_STORAGE = "storage"
 
 SERVICE_IMPORT_LEGACY_YAML = "import_legacy_yaml"
+SERVICE_IMPORT_CONTROLLER_CONFIG = "import_controller_config"
 SERVICE_FORCE_RELOGIN = "force_relogin"
 SERVICE_APPLY_ZONE_POLICY = "apply_zone_policy"
 SERVICE_APPLY_ALL_ZONE_POLICIES = "apply_all_zone_policies"
