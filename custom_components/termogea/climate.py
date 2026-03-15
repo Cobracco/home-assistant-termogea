@@ -17,10 +17,10 @@ from .const import (
     ATTR_ACTIVE_MODE,
     ATTR_ASSIGNED_PEOPLE,
     ATTR_ASSIGNED_PEOPLE_PRESENT,
+    ATTR_CUSTOM_SETPOINTS,
     ATTR_EFFECTIVE_TARGET,
     ATTR_ENABLED,
     ATTR_IS_COMMON_AREA,
-    ATTR_CUSTOM_SETPOINTS,
     ATTR_MANUAL_OVERRIDE_ALLOWED,
     ATTR_MAPPING_COMPLETE,
     ATTR_POLICY_REASON,
@@ -31,6 +31,10 @@ from .const import (
     DATA_COORDINATOR,
     DATA_STORAGE,
     DOMAIN,
+    GLOBAL_MODE_AWAY,
+    GLOBAL_MODE_COMFORT,
+    GLOBAL_MODE_NIGHT,
+    GLOBAL_MODE_OFF,
 )
 from .entity import zone_device_info
 from .models import ZoneDefinition
@@ -154,10 +158,41 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         zone = self._zone
         if temperature is None or zone.target_temperature is None:
             return
+        requested = float(temperature)
         await self.coordinator.client.async_write_scaled_register(
             zone.target_temperature,
-            float(temperature),
+            requested,
         )
+
+        if zone.manual_override_allowed:
+            # Keep manual user setpoint stable against automatic policy writes.
+            decision = evaluate_zone_policy(
+                self.hass,
+                zone,
+                self._storage.config.zones,
+                self._storage.config.global_config,
+            )
+            zone.custom_setpoints = True
+            mode = decision.active_mode
+            if mode == GLOBAL_MODE_COMFORT or decision.policy_reason == "presence_comfort":
+                zone.comfort_temp = requested
+            elif mode == GLOBAL_MODE_NIGHT:
+                zone.night_temp = requested
+            elif mode == GLOBAL_MODE_AWAY or decision.policy_reason in {
+                "no_people_assigned_home",
+                "global_away",
+            }:
+                zone.away_temp = requested
+            elif mode == GLOBAL_MODE_OFF or decision.policy_reason in {
+                "global_off",
+                "global_disabled",
+                "zone_disabled",
+            }:
+                zone.inactive_temp = requested
+            else:
+                zone.eco_temp = requested
+            await self._storage.async_upsert_zone(zone)
+
         await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
