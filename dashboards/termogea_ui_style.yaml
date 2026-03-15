@@ -1,0 +1,149 @@
+title: Termogea UI
+views:
+  - title: Zone
+    path: termogea-zone
+    icon: mdi:view-grid
+    cards:
+      - type: markdown
+        content: |
+          # Termogea
+          Griglia zone in stile app Termogea.  
+          `Tap`: dettaglio zona • `Hold`: On/Off rapido
+
+      - type: custom:auto-entities
+        show_empty: false
+        unique: true
+        card:
+          type: grid
+          columns: 4
+          square: false
+        card_param: cards
+        filter:
+          include:
+            - domain: climate
+              options:
+                type: custom:button-card
+                entity: this.entity_id
+                show_icon: false
+                show_state: false
+                name: >
+                  [[[
+                    const friendly = entity.attributes.friendly_name || entity.entity_id.split('.')[1];
+                    return friendly.toUpperCase();
+                  ]]]
+                custom_fields:
+                  temp: >
+                    [[[
+                      const t = entity.attributes.current_temperature;
+                      if (t === undefined || t === null) return '--';
+                      return `${Number(t).toFixed(1)}°`;
+                    ]]]
+                  toggle: >
+                    [[[
+                      const isOn = entity.state !== 'off';
+                      const left = isOn ? '30px' : '2px';
+                      const color = isOn ? '#ff3d2f' : '#bfbfbf';
+                      return `<div class="tg-switch"><div class="tg-dot" style="left:${left};background:${color};"></div></div>`;
+                    ]]]
+                  hand: |
+                    [[[ return '☝'; ]]]
+                tap_action:
+                  action: more-info
+                hold_action:
+                  action: call-service
+                  service: climate.set_hvac_mode
+                  service_data:
+                    entity_id: >
+                      [[[
+                        return entity.entity_id;
+                      ]]]
+                    hvac_mode: >
+                      [[[
+                        return entity.state === 'off' ? 'heat' : 'off';
+                      ]]]
+                styles:
+                  grid:
+                    - grid-template-areas: '"n" "temp" "." "toggle hand"'
+                    - grid-template-rows: min-content min-content 1fr min-content
+                    - grid-template-columns: 1fr min-content
+                  card:
+                    - position: relative
+                    - height: 220px
+                    - border-radius: 22px
+                    - padding: 14px
+                    - background: linear-gradient(180deg, #f8a500 0%, #f75d00 100%)
+                    - box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18)
+                  name:
+                    - justify-self: start
+                    - color: white
+                    - font-size: 34px
+                    - font-weight: 500
+                    - line-height: 1
+                  custom_fields:
+                    temp:
+                      - align-self: start
+                      - justify-self: start
+                      - color: white
+                      - font-size: 78px
+                      - font-weight: 700
+                      - line-height: 1
+                    toggle:
+                      - justify-self: start
+                      - align-self: end
+                    hand:
+                      - justify-self: end
+                      - align-self: end
+                      - color: rgba(255, 255, 255, 0.95)
+                      - font-size: 40px
+                state:
+                  - value: "off"
+                    styles:
+                      card:
+                        - filter: grayscale(0.12)
+                        - opacity: 0.9
+                extra_styles: |
+                  .tg-switch {
+                    width: 58px;
+                    height: 30px;
+                    border-radius: 999px;
+                    background: #ffffff;
+                    position: relative;
+                    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+                  }
+                  .tg-dot {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 50%;
+                    position: absolute;
+                    top: 2px;
+                    transition: left 0.2s ease;
+                  }
+        sort:
+          method: friendly_name
+          ignore_case: true
+
+  - title: Dettaglio
+    path: termogea-dettaglio
+    icon: mdi:gauge
+    cards:
+      - type: markdown
+        content: |
+          # Dettaglio zone
+          Vista termostato per ogni zona.
+
+      - type: custom:auto-entities
+        show_empty: false
+        card:
+          type: grid
+          columns: 2
+          square: false
+        card_param: cards
+        filter:
+          include:
+            - domain: climate
+              options:
+                type: thermostat
+                entity: this.entity_id
+        sort:
+          method: friendly_name
+          ignore_case: true

@@ -64,6 +64,18 @@ Se hai un file `termogea_zones.yaml`, puoi importarlo:
 - dalla UI di configurazione dell'integrazione
 - oppure con il servizio `termogea.import_legacy_yaml`
 
+## Dashboard UI stile app
+
+Nel repository e inclusa una dashboard Lovelace in stile Termogea:
+
+- file: `dashboards/termogea_ui_style.yaml`
+- docs: `dashboards/README.md`
+
+Prerequisiti HACS frontend:
+
+- `button-card`
+- `auto-entities`
+
 ## Sviluppo
 
 - validation workflow: `hassfest`
