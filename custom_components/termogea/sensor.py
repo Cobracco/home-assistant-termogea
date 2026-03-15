@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -48,14 +49,25 @@ async def async_setup_entry(
             unique_suffix="active_season",
         ),
     ]
+    entity_registry = er.async_get(hass)
     for zone in storage.config.zones:
-        entities.append(
-            TermogeaHumiditySensor(
-                coordinator,
-                storage,
-                zone.zone_id,
+        humidity_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_humidity"
+        if zone.current_humidity is not None:
+            entities.append(
+                TermogeaHumiditySensor(
+                    coordinator,
+                    storage,
+                    zone.zone_id,
+                )
             )
-        )
+        else:
+            stale_entity_id = entity_registry.async_get_entity_id(
+                "sensor",
+                DOMAIN,
+                humidity_unique_id,
+            )
+            if stale_entity_id:
+                entity_registry.async_remove(stale_entity_id)
         entities.append(
             TermogeaPolicyTextSensor(
                 coordinator,
