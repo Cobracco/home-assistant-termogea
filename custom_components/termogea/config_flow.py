@@ -461,7 +461,10 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 schedule_rules_winter=current.schedule_rules_winter,
                 schedule_rules_summer=current.schedule_rules_summer,
             )
-            await storage.async_update_global_config(updated)
+            await storage.async_update_global_config(
+                updated,
+                previous_global_config=current,
+            )
             return await self._async_finish_and_reload()
 
         return self.async_show_form(

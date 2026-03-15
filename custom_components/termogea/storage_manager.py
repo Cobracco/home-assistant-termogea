@@ -12,6 +12,23 @@ from .const import DOMAIN, STORAGE_VERSION
 from .models import GlobalConfig, RuntimeConfig, ZoneDefinition
 from .zone_map import ZoneMapError, load_zone_map, parse_runtime_config, serialize_runtime_config
 
+_TEMP_EPSILON = 0.01
+
+
+def _same_temp(a: float, b: float) -> bool:
+    return abs(float(a) - float(b)) <= _TEMP_EPSILON
+
+
+def _zone_matches_global_legacy_setpoints(zone: ZoneDefinition, global_config: GlobalConfig) -> bool:
+    """Return True when zone temperatures are effectively inherited from global legacy fields."""
+    return (
+        _same_temp(zone.comfort_temp, global_config.comfort_temp)
+        and _same_temp(zone.eco_temp, global_config.eco_temp)
+        and _same_temp(zone.away_temp, global_config.away_temp)
+        and _same_temp(zone.night_temp, global_config.night_temp)
+        and _same_temp(zone.inactive_temp, global_config.inactive_temp)
+    )
+
 
 class TermogeaStorageManager:
     """Manage persistent Termogea config in Home Assistant storage."""
@@ -59,8 +76,26 @@ class TermogeaStorageManager:
         self._config.zones = zones
         await self.async_save()
 
-    async def async_update_global_config(self, global_config: GlobalConfig) -> None:
-        """Replace global config."""
+    async def async_update_global_config(
+        self,
+        global_config: GlobalConfig,
+        *,
+        previous_global_config: GlobalConfig | None = None,
+    ) -> None:
+        """Replace global config.
+
+        If previous_global_config is provided, zones that were inheriting
+        legacy global setpoints are kept aligned to the new global values.
+        """
+        if previous_global_config is not None:
+            for zone in self._config.zones:
+                if not _zone_matches_global_legacy_setpoints(zone, previous_global_config):
+                    continue
+                zone.comfort_temp = global_config.comfort_temp
+                zone.eco_temp = global_config.eco_temp
+                zone.away_temp = global_config.away_temp
+                zone.night_temp = global_config.night_temp
+                zone.inactive_temp = global_config.inactive_temp
         self._config.global_config = global_config
         await self.async_save()
 
