@@ -20,6 +20,7 @@ from .const import (
     ATTR_CUSTOM_SETPOINTS,
     ATTR_EFFECTIVE_TARGET,
     ATTR_ENABLED,
+    ATTR_HEATING_ACTIVE,
     ATTR_IS_COMMON_AREA,
     ATTR_MANUAL_OVERRIDE_ALLOWED,
     ATTR_MAPPING_COMPLETE,
@@ -27,6 +28,7 @@ from .const import (
     ATTR_PRESENCE_DETECTED,
     ATTR_PRESENCE_SENSOR,
     ATTR_ZONE_ENABLED,
+    ATTR_ZONE_STATUS_VALUE,
     ATTR_ZONE_ID,
     DATA_COORDINATOR,
     DATA_STORAGE,
@@ -38,7 +40,7 @@ from .const import (
 )
 from .entity import zone_device_info
 from .models import ZoneDefinition
-from .policy import evaluate_zone_policy
+from .policy import evaluate_zone_policy, is_zone_heating_active
 
 
 async def async_setup_entry(
@@ -126,6 +128,7 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         zone = self._zone
+        snapshot = self.coordinator.data.get(self._zone_id)
         decision = evaluate_zone_policy(
             self.hass,
             zone,
@@ -142,6 +145,11 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
             ATTR_ASSIGNED_PEOPLE_PRESENT: decision.assigned_people_present,
             ATTR_PRESENCE_DETECTED: decision.presence_detected,
             ATTR_ZONE_ENABLED: decision.zone_enabled,
+            ATTR_HEATING_ACTIVE: is_zone_heating_active(
+                snapshot,
+                decision,
+            ),
+            ATTR_ZONE_STATUS_VALUE: None if snapshot is None else snapshot.status_value,
             ATTR_ACTIVE_MODE: decision.active_mode,
             ATTR_MAPPING_COMPLETE: zone.mapping_complete,
             ATTR_ENABLED: zone.enabled,

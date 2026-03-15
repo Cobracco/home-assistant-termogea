@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DATA_STORAGE, DOMAIN
 from .entity import zone_device_info
-from .policy import evaluate_zone_policy
+from .policy import evaluate_zone_policy, is_zone_heating_active
 
 
 async def async_setup_entry(
@@ -54,6 +54,16 @@ async def async_setup_entry(
                 sensor_key="zone_enabled",
                 name_suffix="Zone Enabled",
                 unique_suffix="zone_enabled",
+            )
+        )
+        entities.append(
+            TermogeaZoneBinarySensor(
+                coordinator,
+                storage,
+                zone.zone_id,
+                sensor_key="heating_active",
+                name_suffix="Heating Active",
+                unique_suffix="heating_active",
             )
         )
 
@@ -114,4 +124,7 @@ class TermogeaZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
             self._storage.config.zones,
             self._storage.config.global_config,
         )
+        if self._sensor_key == "heating_active":
+            snapshot = self.coordinator.data.get(self._zone_id)
+            return is_zone_heating_active(snapshot, decision)
         return bool(getattr(decision, self._sensor_key))

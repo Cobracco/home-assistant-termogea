@@ -96,6 +96,7 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         ),
         target_temperature=_parse_register(zone_data.get("target_temperature"), required=False),
         hvac_mode=_parse_register(zone_data.get("hvac_mode"), required=False),
+        status_register=_parse_register(zone_data.get("status_register"), required=False),
         people=[str(person) for person in zone_data.get("people", [])],
         presence_sensor=zone_data.get("presence_sensor"),
         is_common_area=bool(zone_data.get("is_common_area", False)),

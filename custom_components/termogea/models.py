@@ -94,6 +94,7 @@ class ZoneDefinition:
     current_humidity: RegisterDefinition | None = None
     target_temperature: RegisterDefinition | None = None
     hvac_mode: RegisterDefinition | None = None
+    status_register: RegisterDefinition | None = None
     people: list[str] = field(default_factory=list)
     presence_sensor: str | None = None
     is_common_area: bool = False
@@ -134,6 +135,11 @@ class ZoneDefinition:
             "hvac_mode": (
                 self.hvac_mode.as_dict() if self.hvac_mode is not None else None
             ),
+            "status_register": (
+                self.status_register.as_dict()
+                if self.status_register is not None
+                else None
+            ),
             "people": list(self.people),
             "presence_sensor": self.presence_sensor,
             "is_common_area": self.is_common_area,
@@ -164,6 +170,7 @@ class ZoneSnapshot:
     current_humidity: float | None
     target_temperature: float | None
     hvac_mode: str | None
+    status_value: int | None = None
     raw_values: dict[str, int | None] = field(default_factory=dict)
 
 

@@ -213,6 +213,112 @@ async def _sync_zone_humidity_mapping_from_controller(
         await storage.async_save()
 
 
+async def _sync_zone_hvac_mapping_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Backfill HVAC on/off register mapping for already configured zones."""
+    try:
+        _global, imported_zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return
+    if not imported_zones:
+        return
+
+    imported_hvac: dict[int, RegisterDefinition] = {}
+    for imported in imported_zones:
+        idx = _zone_index(imported.zone_id)
+        if idx is None or imported.hvac_mode is None:
+            continue
+        imported_hvac[idx] = imported.hvac_mode
+
+    if not imported_hvac:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        hvac_register = imported_hvac.get(idx)
+        if hvac_register is None:
+            continue
+        if zone.hvac_mode is None:
+            zone.hvac_mode = hvac_register
+            changed = True
+            continue
+        if zone.hvac_mode.off_value is None and hvac_register.off_value is not None:
+            zone.hvac_mode.off_value = hvac_register.off_value
+            changed = True
+        if zone.hvac_mode.heat_value is None and hvac_register.heat_value is not None:
+            zone.hvac_mode.heat_value = hvac_register.heat_value
+            changed = True
+
+    if changed:
+        await storage.async_save()
+
+
+async def _normalize_zone_hvac_values(
+    storage: TermogeaStorageManager,
+) -> None:
+    """Normalize HVAC on/off raw values for scaled registers."""
+    changed = False
+    for zone in storage.config.zones:
+        hvac = zone.hvac_mode
+        if hvac is None or hvac.scale <= 1:
+            continue
+        if hvac.heat_value is not None:
+            normalized_heat = int(round(hvac.heat_value / hvac.scale))
+            if normalized_heat > 0 and normalized_heat != hvac.heat_value:
+                hvac.heat_value = normalized_heat
+                changed = True
+        if hvac.off_value is not None and hvac.off_value != 0:
+            normalized_off = int(round(hvac.off_value / hvac.scale))
+            if normalized_off >= 0 and normalized_off != hvac.off_value:
+                hvac.off_value = normalized_off
+                changed = True
+    if changed:
+        await storage.async_save()
+
+
+async def _sync_zone_status_mapping_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Backfill server-side status register mapping for already configured zones."""
+    try:
+        _global, imported_zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return
+    if not imported_zones:
+        return
+
+    imported_status: dict[int, RegisterDefinition] = {}
+    for imported in imported_zones:
+        idx = _zone_index(imported.zone_id)
+        if idx is None or imported.status_register is None:
+            continue
+        imported_status[idx] = imported.status_register
+
+    if not imported_status:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        if zone.status_register is not None:
+            continue
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        status_register = imported_status.get(idx)
+        if status_register is not None:
+            zone.status_register = status_register
+            changed = True
+
+    if changed:
+        await storage.async_save()
+
+
 def _same_mod_reg(a: RegisterDefinition | None, b: RegisterDefinition | None) -> bool:
     if a is None or b is None:
         return False
@@ -703,9 +809,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if storage.config.zones:
             await _sync_zone_names_from_controller(storage, client)
             await _repair_zone_temperature_mapping_from_controller(storage, client)
+            if any(zone.hvac_mode is None for zone in storage.config.zones):
+                await _sync_zone_hvac_mapping_from_controller(storage, client)
+            await _normalize_zone_hvac_values(storage)
             if any(zone.current_humidity is None for zone in storage.config.zones):
                 await _sync_zone_humidity_mapping_from_controller(storage, client)
             await _repair_zone_humidity_mapping_from_controller(storage, client)
+            if any(zone.status_register is None for zone in storage.config.zones):
+                await _sync_zone_status_mapping_from_controller(storage, client)
     except TermogeaAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except TermogeaApiError as err:

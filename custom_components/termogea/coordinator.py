@@ -50,6 +50,7 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                 humidity_value = previous.current_humidity if previous is not None else None
                 target_value = previous.target_temperature if previous is not None else None
                 hvac_mode = previous.hvac_mode if previous is not None else None
+                status_value = previous.status_value if previous is not None else None
 
                 if zone.current_temperature is not None:
                     try:
@@ -105,11 +106,24 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                             err,
                         )
 
+                if zone.status_register is not None:
+                    try:
+                        status_raw, _ = await self.client.async_read_register(zone.status_register)
+                        raw_values["zone_status"] = status_raw
+                        status_value = status_raw
+                    except TermogeaApiError as err:
+                        _LOGGER.warning(
+                            "Zone %s status register read failed: %s",
+                            zone.zone_id,
+                            err,
+                        )
+
                 snapshots[zone.zone_id] = ZoneSnapshot(
                     current_temperature=current_value,
                     current_humidity=humidity_value,
                     target_temperature=target_value,
                     hvac_mode=hvac_mode,
+                    status_value=status_value,
                     raw_values=raw_values,
                 )
 

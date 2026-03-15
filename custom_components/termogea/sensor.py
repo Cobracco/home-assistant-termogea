@@ -52,6 +52,7 @@ async def async_setup_entry(
     entity_registry = er.async_get(hass)
     for zone in storage.config.zones:
         humidity_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_humidity"
+        status_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_status_value"
         if zone.current_humidity is not None:
             entities.append(
                 TermogeaHumiditySensor(
@@ -65,6 +66,22 @@ async def async_setup_entry(
                 "sensor",
                 DOMAIN,
                 humidity_unique_id,
+            )
+            if stale_entity_id:
+                entity_registry.async_remove(stale_entity_id)
+        if zone.status_register is not None:
+            entities.append(
+                TermogeaZoneStatusValueSensor(
+                    coordinator,
+                    storage,
+                    zone.zone_id,
+                )
+            )
+        else:
+            stale_entity_id = entity_registry.async_get_entity_id(
+                "sensor",
+                DOMAIN,
+                status_unique_id,
             )
             if stale_entity_id:
                 entity_registry.async_remove(stale_entity_id)
@@ -255,3 +272,32 @@ class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
             attrs["humidity_register_scale"] = zone.current_humidity.scale
             attrs["humidity_register_precision"] = zone.current_humidity.precision
         return attrs
+
+
+class TermogeaZoneStatusValueSensor(CoordinatorEntity, SensorEntity):
+    """Sensor exposing server-side zone status bits value."""
+
+    _attr_icon = "mdi:chip"
+
+    def __init__(self, coordinator, storage, zone_id: str) -> None:
+        super().__init__(coordinator)
+        self._storage = storage
+        self._zone_id = zone_id
+        zone = storage.get_zone(zone_id)
+        self._attr_name = f"{zone.name} Status Value"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{zone_id}_status_value"
+
+    @property
+    def native_value(self) -> int | None:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return None if snapshot is None else snapshot.status_value
+
+    @property
+    def available(self) -> bool:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return super().available and snapshot is not None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        zone = self._storage.get_zone(self._zone_id)
+        return zone_device_info(self.coordinator.config_entry, zone)

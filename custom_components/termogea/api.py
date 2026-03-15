@@ -665,6 +665,21 @@ class TermogeaClient:
         if reg_list_raw is None or conf_raw is None:
             raise TermogeaApiError("Controller archive missing mandatory files (reg_list.txt / telegea.conf)")
 
+        parser = self._load_ini(conf_raw)
+        custom_parser = self._load_ini(custom_raw) if custom_raw else configparser.ConfigParser(interpolation=None)
+        custom_parser.optionxform = str
+
+        generic_section = parser["generic"] if parser.has_section("generic") else {}
+        mb_reg_list_raw: str | None = None
+        mb_reg_list_path = self._strip_quotes(generic_section.get("MODBUS_REGISTER_LIST", ""))
+        if mb_reg_list_path:
+            try:
+                mb_reg_list_raw = (
+                    await self.async_download_controller_file(mb_reg_list_path)
+                ).decode(errors="ignore")
+            except TermogeaApiError:
+                mb_reg_list_raw = None
+
         names_by_zone: dict[int, str] = {}
         if zone_names_raw:
             try:
@@ -678,9 +693,10 @@ class TermogeaClient:
                 names_by_zone = {}
 
         register_catalog = self._parse_reg_list(reg_list_raw)
-        parser = self._load_ini(conf_raw)
-        custom_parser = self._load_ini(custom_raw) if custom_raw else configparser.ConfigParser(interpolation=None)
-        custom_parser.optionxform = str
+        if mb_reg_list_raw:
+            mb_catalog = self._parse_reg_list(mb_reg_list_raw)
+            for name, register in mb_catalog.items():
+                register_catalog.setdefault(name, register)
 
         base_global = parser["thcontrol"] if parser.has_section("thcontrol") else {}
         custom_global = custom_parser["thcontrol"] if custom_parser.has_section("thcontrol") else {}
@@ -711,6 +727,7 @@ class TermogeaClient:
             disp_tnow_name = self._strip_quotes(section.get("THC_DISP_TNOW_REG_NAME", ""))
             tset_name = self._strip_quotes(section.get("THC_TSET_REG_NAME", ""))
             onoff_name = self._strip_quotes(section.get("THC_ONOFF_REG_NAME", ""))
+            status_name = self._strip_quotes(section.get("THC_OUT_THERMOSTAT_REG_NAME", ""))
             hnow_name = self._first_non_empty_option(
                 section,
                 (
@@ -785,6 +802,24 @@ class TermogeaClient:
                     off_value=off_val,
                     heat_value=on_val,
                 )
+            if hvac_def is not None and hvac_def.scale > 1 and hvac_def.heat_value is not None:
+                normalized_heat = int(round(hvac_def.heat_value / hvac_def.scale))
+                if normalized_heat > 0:
+                    hvac_def.heat_value = normalized_heat
+
+            status_def = None
+            status_tuple = (
+                self._find_register_entry_by_names(register_catalog, [status_name])
+                if status_name
+                else None
+            )
+            if status_tuple is not None and "R" in status_tuple[1]:
+                status_def = status_tuple[0]
+            if status_def is None:
+                status_def = self._find_register_by_names(
+                    register_catalog,
+                    [f"Zone{idx} StatusBits", f"Zona{idx} StatusBits"],
+                )
 
             zone_comfort = self._safe_float(
                 custom_section.get("THC_D_SETPOINT1", comfort),
@@ -809,6 +844,7 @@ class TermogeaClient:
                     current_humidity=humidity_def,
                     target_temperature=target_def,
                     hvac_mode=hvac_def,
+                    status_register=status_def,
                     comfort_temp=zone_comfort,
                     eco_temp=zone_eco,
                     away_temp=away,

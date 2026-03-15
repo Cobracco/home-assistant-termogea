@@ -17,7 +17,7 @@ from .const import (
     SEASON_MODE_SUMMER,
     SEASON_MODE_WINTER,
 )
-from .models import GlobalConfig, PolicyDecision, ZoneDefinition
+from .models import GlobalConfig, PolicyDecision, ZoneDefinition, ZoneSnapshot
 
 
 def _state(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -265,3 +265,32 @@ def evaluate_zone_policy(
         effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
         active_mode=active_mode,
     )
+
+
+def is_zone_heating_active(
+    snapshot: ZoneSnapshot | None,
+    decision: PolicyDecision,
+    *,
+    delta_celsius: float = 0.1,
+) -> bool:
+    """Return True when the zone is actively demanding conditioning."""
+    if snapshot is None:
+        return False
+    if not decision.zone_enabled:
+        return False
+    if snapshot.hvac_mode == "off":
+        return False
+
+    if snapshot.status_value is not None:
+        # Server-provided StatusBits: bit0 represents active zone request.
+        return bool(snapshot.status_value & 0x0001)
+
+    current = snapshot.current_temperature
+    target = snapshot.target_temperature
+    if current is None:
+        return False
+    if target is None:
+        target = decision.effective_target
+    if target is None:
+        return False
+    return current < (target - delta_celsius)
