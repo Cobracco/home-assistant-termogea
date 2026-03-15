@@ -189,50 +189,44 @@ def _build_register(prefix: str, data: dict[str, Any]) -> RegisterDefinition | N
 
 def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Schema:
     defaults = defaults or ZoneDefinition(zone_id="", name="")
-    person_entities = sorted(
-        entity_id
-        for entity_id in hass.states.async_entity_ids("person")
+    schema: dict[vol.Marker, object] = {
+        vol.Required("zone_id", default=defaults.zone_id): str,
+        vol.Required("name", default=defaults.name): str,
+        vol.Required("enabled", default=defaults.enabled): bool,
+        vol.Required(
+            "manual_override_allowed",
+            default=defaults.manual_override_allowed,
+        ): bool,
+        vol.Required("is_common_area", default=defaults.is_common_area): bool,
+        vol.Optional("people", default=defaults.people): selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="person",
+                multiple=True,
+            )
+        ),
+        vol.Required("comfort_temp", default=defaults.comfort_temp): vol.Coerce(float),
+        vol.Required("eco_temp", default=defaults.eco_temp): vol.Coerce(float),
+        vol.Required("away_temp", default=defaults.away_temp): vol.Coerce(float),
+        vol.Required("night_temp", default=defaults.night_temp): vol.Coerce(float),
+        vol.Required("inactive_temp", default=defaults.inactive_temp): vol.Coerce(float),
+    }
+
+    if defaults.presence_sensor:
+        presence_key: vol.Marker = vol.Optional(
+            "presence_sensor",
+            default=defaults.presence_sensor,
+        )
+    else:
+        presence_key = vol.Optional("presence_sensor")
+
+    schema[presence_key] = selector.EntitySelector(
+        selector.EntitySelectorConfig(
+            domain="binary_sensor",
+            multiple=False,
+        )
     )
-    presence_entities = sorted(
-        entity_id
-        for entity_id in hass.states.async_entity_ids("binary_sensor")
-    )
-    return vol.Schema(
-        {
-            vol.Required("zone_id", default=defaults.zone_id): str,
-            vol.Required("name", default=defaults.name): str,
-            vol.Required("enabled", default=defaults.enabled): bool,
-            vol.Required(
-                "manual_override_allowed",
-                default=defaults.manual_override_allowed,
-            ): bool,
-            vol.Required("is_common_area", default=defaults.is_common_area): bool,
-            vol.Optional(
-                "people",
-                default=defaults.people,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_selector_options(person_entities),
-                    multiple=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                "presence_sensor",
-                default=defaults.presence_sensor or "",
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_selector_options(["", *presence_entities]),
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required("comfort_temp", default=defaults.comfort_temp): vol.Coerce(float),
-            vol.Required("eco_temp", default=defaults.eco_temp): vol.Coerce(float),
-            vol.Required("away_temp", default=defaults.away_temp): vol.Coerce(float),
-            vol.Required("night_temp", default=defaults.night_temp): vol.Coerce(float),
-            vol.Required("inactive_temp", default=defaults.inactive_temp): vol.Coerce(float),
-        }
-    )
+
+    return vol.Schema(schema)
 
 
 def _zone_mapping_schema(defaults: ZoneDefinition | None = None) -> vol.Schema:
