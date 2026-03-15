@@ -194,15 +194,40 @@ class TermogeaClient:
         names: list[str],
     ) -> RegisterDefinition | None:
         """Return first matching register definition by case-insensitive name."""
+        found = TermogeaClient._find_register_entry_by_names(register_catalog, names)
+        return None if found is None else found[0]
+
+    @staticmethod
+    def _normalize_register_name(value: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", value.lower())
+
+    @staticmethod
+    def _find_register_entry_by_names(
+        register_catalog: dict[str, tuple[RegisterDefinition, str]],
+        names: list[str],
+    ) -> tuple[RegisterDefinition, str] | None:
+        """Return first matching register tuple by case-insensitive/fuzzy name."""
         if not names:
             return None
-        lowered_catalog = {name.lower(): definition for name, (definition, _mode) in register_catalog.items()}
+        lowered_catalog = {
+            name.lower(): (definition, mode) for name, (definition, mode) in register_catalog.items()
+        }
+        normalized_catalog = {
+            TermogeaClient._normalize_register_name(name): (definition, mode)
+            for name, (definition, mode) in register_catalog.items()
+        }
         for candidate in names:
             if not candidate:
                 continue
-            found = lowered_catalog.get(candidate.lower())
+            clean_candidate = TermogeaClient._strip_quotes(str(candidate))
+            found = lowered_catalog.get(clean_candidate.lower())
             if found is not None:
                 return found
+            normalized = TermogeaClient._normalize_register_name(clean_candidate)
+            if normalized:
+                found = normalized_catalog.get(normalized)
+                if found is not None:
+                    return found
         return None
 
     @staticmethod
@@ -248,10 +273,14 @@ class TermogeaClient:
     def _guess_zone_humidity_register(
         register_catalog: dict[str, tuple[RegisterDefinition, str]],
         zone_index: int,
+        zone_name: str = "",
     ) -> RegisterDefinition | None:
         """Best-effort lookup for zone humidity register when config key is missing."""
         best_score = -1
         best: RegisterDefinition | None = None
+        zone_name_tokens = [
+            token for token in re.split(r"[^a-z0-9]+", zone_name.lower()) if len(token) >= 3
+        ]
 
         for name, (definition, mode) in register_catalog.items():
             lower = name.lower()
@@ -272,6 +301,9 @@ class TermogeaClient:
                 zone_score = 3
             elif re.search(rf"[_\-\s]0*{zone_index}\b", lower):
                 zone_score = 1
+
+            if zone_name_tokens and any(token in lower for token in zone_name_tokens):
+                zone_score += 2
 
             mode_score = 2 if "R" in mode else 0
             score = humidity_score + zone_score + mode_score
@@ -614,8 +646,12 @@ class TermogeaClient:
             if not hnow_name:
                 hnow_name = self._find_humidity_reg_name_in_section(section)
 
-            current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
-            humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
+            current_def = (
+                self._find_register_by_names(register_catalog, [tnow_name]) if tnow_name else None
+            )
+            humidity_def = (
+                self._find_register_by_names(register_catalog, [hnow_name]) if hnow_name else None
+            )
             if humidity_def is None:
                 humidity_def = self._find_humidity_register_by_section_mod_reg(
                     section,
@@ -627,14 +663,22 @@ class TermogeaClient:
                     self._humidity_name_candidates_from_temperature_name(tnow_name, idx),
                 )
             if humidity_def is None:
-                humidity_def = self._guess_zone_humidity_register(register_catalog, idx)
-            target_tuple = register_catalog.get(tset_name) if tset_name else None
+                humidity_def = self._guess_zone_humidity_register(
+                    register_catalog,
+                    idx,
+                    names_by_zone.get(idx, ""),
+                )
+            target_tuple = (
+                self._find_register_entry_by_names(register_catalog, [tset_name]) if tset_name else None
+            )
             target_def = None
             if target_tuple is not None and "W" in target_tuple[1]:
                 target_def = target_tuple[0]
 
             hvac_def = None
-            hvac_tuple = register_catalog.get(onoff_name) if onoff_name else None
+            hvac_tuple = (
+                self._find_register_entry_by_names(register_catalog, [onoff_name]) if onoff_name else None
+            )
             on_val = self._safe_int(section.get("THC_ONOFF_REG_VAL_ON"))
             off_val = self._safe_int(section.get("THC_ONOFF_REG_VAL_OFF"))
             if hvac_tuple is not None and on_val is not None and off_val is not None and "W" in hvac_tuple[1]:
