@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .api import TermogeaApiError, TermogeaAuthError, TermogeaClient
 from .const import (
@@ -51,6 +52,10 @@ def _zone_identifiers(entry_id: str, zone_id: str) -> tuple[str, ...]:
         f"Termogea_{zone_id}_device",
         f"{zone_id}_device",
     )
+
+
+def _global_power_unique_id(entry_id: str) -> str:
+    return f"{entry_id}_global_power"
 
 
 def _looks_like_legacy_name(name: str) -> bool:
@@ -290,6 +295,23 @@ def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list
 
         if update_kwargs:
             registry.async_update_device(device.id, **update_kwargs)
+
+
+def _ensure_global_power_switch_enabled(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Ensure the master global power switch is visible in entity registry."""
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "switch",
+        DOMAIN,
+        _global_power_unique_id(entry.entry_id),
+    )
+    if not entity_id:
+        return
+    entity_entry = registry.async_get(entity_id)
+    if entity_entry is None:
+        return
+    if entity_entry.disabled_by is not None:
+        registry.async_update_entity(entity_id, disabled_by=None)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -556,6 +578,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _sync_zone_device_names(hass, entry, storage.config.zones)
+    _ensure_global_power_switch_enabled(hass, entry)
     return True
 
 
