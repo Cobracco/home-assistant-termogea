@@ -146,6 +146,49 @@ class TermogeaClient:
         return ""
 
     @staticmethod
+    def _find_register_by_mod_reg(
+        register_catalog: dict[str, tuple[RegisterDefinition, str]],
+        mod: int,
+        reg: int,
+    ) -> RegisterDefinition | None:
+        """Find a register definition by mod/reg pair."""
+        for definition, _mode in register_catalog.values():
+            if definition.mod == mod and definition.reg == reg:
+                return definition
+        return None
+
+    @staticmethod
+    def _find_humidity_register_by_section_mod_reg(
+        section: Mapping[str, Any],
+        register_catalog: dict[str, tuple[RegisterDefinition, str]],
+    ) -> RegisterDefinition | None:
+        """Try to resolve humidity register from mod/reg keys in config section."""
+        humidity_tokens = ("HNOW", "RHNOW", "HUM", "UMID", "UR")
+        mod_candidates: list[int] = []
+        reg_candidates: list[int] = []
+
+        for key, value in section.items():
+            key_upper = str(key).upper()
+            if not any(token in key_upper for token in humidity_tokens):
+                continue
+            if "REG_NAME" in key_upper or key_upper.endswith("_VAL_ON") or key_upper.endswith("_VAL_OFF"):
+                continue
+            parsed = TermogeaClient._safe_int(value)
+            if parsed is None:
+                continue
+            if "MOD" in key_upper:
+                mod_candidates.append(parsed)
+            if "REG" in key_upper:
+                reg_candidates.append(parsed)
+
+        for mod in mod_candidates:
+            for reg in reg_candidates:
+                definition = TermogeaClient._find_register_by_mod_reg(register_catalog, mod, reg)
+                if definition is not None:
+                    return definition
+        return None
+
+    @staticmethod
     def _find_register_by_names(
         register_catalog: dict[str, tuple[RegisterDefinition, str]],
         names: list[str],
@@ -573,6 +616,11 @@ class TermogeaClient:
 
             current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
             humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
+            if humidity_def is None:
+                humidity_def = self._find_humidity_register_by_section_mod_reg(
+                    section,
+                    register_catalog,
+                )
             if humidity_def is None and tnow_name:
                 humidity_def = self._find_register_by_names(
                     register_catalog,
