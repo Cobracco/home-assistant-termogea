@@ -26,6 +26,7 @@ Custom integration Home Assistant per controllare e configurare impianti **Termo
   - inactive/off
 - fasce orarie settimanali persistenti
 - sensori di policy per debug e dashboard
+- supporto umidita zona (se registro disponibile)
 - import legacy da YAML
 
 ## Installazione manuale
@@ -115,6 +116,7 @@ Risolti nelle ultime iterazioni (fino a `0.1.11`):
 - nomi zona sincronizzati dal controller (no default `Termogea_zona_X_device` quando disponibili)
 - salvataggio form policy zona separato dalla form mapping tecnico
 - nuova card Lovelace custom registrata automaticamente nel picker schede
+- esposizione umidita corrente su climate e sensore dedicato per zona (quando mappata)
 
 ## Sviluppo
 

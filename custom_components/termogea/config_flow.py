@@ -192,6 +192,7 @@ def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Sch
 def _zone_mapping_schema(defaults: ZoneDefinition | None = None) -> vol.Schema:
     defaults = defaults or ZoneDefinition(zone_id="", name="")
     current = _register_to_defaults(defaults.current_temperature)
+    humidity = _register_to_defaults(defaults.current_humidity)
     target = _register_to_defaults(defaults.target_temperature)
     hvac = _register_to_defaults(defaults.hvac_mode)
     return vol.Schema(
@@ -200,6 +201,10 @@ def _zone_mapping_schema(defaults: ZoneDefinition | None = None) -> vol.Schema:
             vol.Optional("current_reg", default=current.get("reg", "")): str,
             vol.Optional("current_scale", default=current.get("scale", 1.0)): vol.Coerce(float),
             vol.Optional("current_precision", default=current.get("precision", 1)): vol.Coerce(int),
+            vol.Optional("humidity_mod", default=humidity.get("mod", "")): str,
+            vol.Optional("humidity_reg", default=humidity.get("reg", "")): str,
+            vol.Optional("humidity_scale", default=humidity.get("scale", 1.0)): vol.Coerce(float),
+            vol.Optional("humidity_precision", default=humidity.get("precision", 1)): vol.Coerce(int),
             vol.Optional("target_mod", default=target.get("mod", "")): str,
             vol.Optional("target_reg", default=target.get("reg", "")): str,
             vol.Optional("target_scale", default=target.get("scale", 1.0)): vol.Coerce(float),
@@ -451,6 +456,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     zone_id=zone_id,
                     name=str(user_input["name"]).strip(),
                     current_temperature=current_zone.current_temperature if current_zone else None,
+                    current_humidity=current_zone.current_humidity if current_zone else None,
                     target_temperature=current_zone.target_temperature if current_zone else None,
                     hvac_mode=current_zone.hvac_mode if current_zone else None,
                     people=list(user_input.get("people", [])),
@@ -514,6 +520,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 zone_id=current_zone.zone_id,
                 name=current_zone.name,
                 current_temperature=_build_register("current", user_input),
+                current_humidity=_build_register("humidity", user_input),
                 target_temperature=_build_register("target", user_input),
                 hvac_mode=_build_register("hvac", user_input),
                 people=current_zone.people,

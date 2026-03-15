@@ -91,6 +91,7 @@ class TermogeaZoneGridCard extends HTMLElement {
         const stateObj = this._hass.states[entry.entity];
         const name = this._nameFor(entry, stateObj);
         const current = stateObj?.attributes?.current_temperature;
+        const humidity = stateObj?.attributes?.current_humidity;
         const target = stateObj?.attributes?.temperature;
         const isOn = this._isOn(stateObj);
         const unavailable = !stateObj || stateObj.state === "unavailable";
@@ -99,7 +100,7 @@ class TermogeaZoneGridCard extends HTMLElement {
           <div class="zone ${isOn ? "on" : "off"} ${unavailable ? "unavailable" : ""}" data-action="more_info" data-entity="${entry.entity}" tabindex="0" role="button">
             <div class="zone-name">${name}</div>
             <div class="zone-temp">${this._formatTemp(current)}<span class="unit">°C</span></div>
-            <div class="zone-target">Target ${this._formatTemp(target)}°C</div>
+            <div class="zone-target">Target ${this._formatTemp(target)}°C · UR ${this._formatTemp(humidity)}%</div>
             <div class="zone-actions">
               <button class="action small" data-action="temp_down" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>-</button>
               <button class="action small" data-action="temp_up" data-entity="${entry.entity}" ${unavailable ? "disabled" : ""}>+</button>
@@ -283,13 +284,17 @@ class TermogeaZoneGridCard extends HTMLElement {
   }
 }
 
-customElements.define("termogea-zone-grid-card", TermogeaZoneGridCard);
+if (!customElements.get("termogea-zone-grid-card")) {
+  customElements.define("termogea-zone-grid-card", TermogeaZoneGridCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "termogea-zone-grid-card",
-  name: "Termogea Zone Grid",
-  description: "Griglia rapida delle zone Termogea con toggle e setpoint.",
-  preview: true,
-  documentationURL: "https://github.com/Cobracco/home-assistant-termogea",
-});
+if (!window.customCards.some((card) => card?.type === "custom:termogea-zone-grid-card")) {
+  window.customCards.push({
+    type: "custom:termogea-zone-grid-card",
+    name: "Termogea Zone Grid",
+    description: "Griglia rapida delle zone Termogea con toggle e setpoint.",
+    preview: false,
+    documentationURL: "https://github.com/Cobracco/home-assistant-termogea",
+  });
+}

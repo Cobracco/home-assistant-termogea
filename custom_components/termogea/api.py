@@ -124,6 +124,14 @@ class TermogeaClient:
             return "away"
         return "night"
 
+    @staticmethod
+    def _first_non_empty_option(section: Mapping[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
+            value = TermogeaClient._strip_quotes(section.get(key))
+            if value:
+                return value
+        return ""
+
     async def async_login(self) -> None:
         """Authenticate against the Termogea login form."""
         async with self._login_lock:
@@ -445,8 +453,18 @@ class TermogeaClient:
             tnow_name = self._strip_quotes(section.get("THC_TNOW_REG_NAME", ""))
             tset_name = self._strip_quotes(section.get("THC_TSET_REG_NAME", ""))
             onoff_name = self._strip_quotes(section.get("THC_ONOFF_REG_NAME", ""))
+            hnow_name = self._first_non_empty_option(
+                section,
+                (
+                    "THC_HNOW_REG_NAME",
+                    "THC_HUM_NOW_REG_NAME",
+                    "THC_RHNOW_REG_NAME",
+                    "THC_HUMIDITY_REG_NAME",
+                ),
+            )
 
             current_def = register_catalog.get(tnow_name, (None, ""))[0] if tnow_name else None
+            humidity_def = register_catalog.get(hnow_name, (None, ""))[0] if hnow_name else None
             target_tuple = register_catalog.get(tset_name) if tset_name else None
             target_def = None
             if target_tuple is not None and "W" in target_tuple[1]:
@@ -486,6 +504,7 @@ class TermogeaClient:
                     zone_id=f"zona_{idx}",
                     name=names_by_zone.get(idx, f"Zona {idx}"),
                     current_temperature=current_def,
+                    current_humidity=humidity_def,
                     target_temperature=target_def,
                     hvac_mode=hvac_def,
                     comfort_temp=zone_comfort,

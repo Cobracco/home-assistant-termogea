@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -42,6 +42,14 @@ async def async_setup_entry(
         ),
     ]
     for zone in storage.config.zones:
+        if zone.current_humidity is not None:
+            entities.append(
+                TermogeaHumiditySensor(
+                    coordinator,
+                    storage,
+                    zone.zone_id,
+                )
+            )
         entities.append(
             TermogeaPolicyTextSensor(
                 coordinator,
@@ -182,3 +190,33 @@ class TermogeaGlobalSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return controller_device_info(self.coordinator.config_entry)
+
+
+class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
+    """Sensor exposing zone current humidity."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    def __init__(self, coordinator, storage, zone_id: str) -> None:
+        super().__init__(coordinator)
+        self._storage = storage
+        self._zone_id = zone_id
+        zone = storage.get_zone(zone_id)
+        self._attr_name = f"{zone.name} Humidity"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{zone_id}_humidity"
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return None if snapshot is None else snapshot.current_humidity
+
+    @property
+    def available(self) -> bool:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return super().available and snapshot is not None and snapshot.current_humidity is not None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        zone = self._storage.get_zone(self._zone_id)
+        return zone_device_info(self.coordinator.config_entry, zone)

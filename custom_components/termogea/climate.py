@@ -77,6 +77,11 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         return None if snapshot is None else snapshot.current_temperature
 
     @property
+    def current_humidity(self) -> float | None:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return None if snapshot is None else snapshot.current_humidity
+
+    @property
     def target_temperature(self) -> float | None:
         snapshot = self.coordinator.data.get(self._zone_id)
         return None if snapshot is None else snapshot.target_temperature

@@ -43,6 +43,7 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                     dict(previous.raw_values) if previous is not None else {}
                 )
                 current_value = previous.current_temperature if previous is not None else None
+                humidity_value = previous.current_humidity if previous is not None else None
                 target_value = previous.target_temperature if previous is not None else None
                 hvac_mode = previous.hvac_mode if previous is not None else None
 
@@ -52,6 +53,12 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                             zone.current_temperature
                         )
                         raw_values["current_temperature"] = current_raw
+
+                    if zone.current_humidity is not None:
+                        humidity_raw, humidity_value = await self.client.async_read_register(
+                            zone.current_humidity
+                        )
+                        raw_values["current_humidity"] = humidity_raw
 
                     if zone.target_temperature is not None:
                         target_raw, target_value = await self.client.async_read_register(
@@ -75,6 +82,7 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
 
                 snapshots[zone.zone_id] = ZoneSnapshot(
                     current_temperature=current_value,
+                    current_humidity=humidity_value,
                     target_temperature=target_value,
                     hvac_mode=hvac_mode,
                     raw_values=raw_values,

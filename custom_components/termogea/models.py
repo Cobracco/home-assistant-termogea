@@ -72,6 +72,7 @@ class ZoneDefinition:
     zone_id: str
     name: str
     current_temperature: RegisterDefinition | None = None
+    current_humidity: RegisterDefinition | None = None
     target_temperature: RegisterDefinition | None = None
     hvac_mode: RegisterDefinition | None = None
     people: list[str] = field(default_factory=list)
@@ -98,6 +99,11 @@ class ZoneDefinition:
             "current_temperature": (
                 self.current_temperature.as_dict()
                 if self.current_temperature is not None
+                else None
+            ),
+            "current_humidity": (
+                self.current_humidity.as_dict()
+                if self.current_humidity is not None
                 else None
             ),
             "target_temperature": (
@@ -134,6 +140,7 @@ class ZoneSnapshot:
     """Latest state for a zone."""
 
     current_temperature: float | None
+    current_humidity: float | None
     target_temperature: float | None
     hvac_mode: str | None
     raw_values: dict[str, int | None] = field(default_factory=dict)

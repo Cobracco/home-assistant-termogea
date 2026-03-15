@@ -28,6 +28,7 @@ Asset grafici repository:
   - `inactive/off`
 - fasce orarie settimanali persistenti
 - sensori di policy per debug e dashboard
+- umidita corrente per zona (se il mapping registro e disponibile)
 - import legacy da file YAML
 
 ## Installazione manuale
@@ -75,6 +76,7 @@ Correzioni principali incluse:
 - import automatico bootstrap da controller per zone, registri e impostazioni base
 - separazione salvataggio policy zona e mapping tecnico (flow indipendenti)
 - registrazione automatica card Lovelace custom nel selettore schede
+- esposizione umidita corrente come attributo climate e sensore `%`
 
 ### Import legacy opzionale
 

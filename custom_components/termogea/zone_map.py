@@ -84,6 +84,10 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         zone_id=zone_id,
         name=name,
         current_temperature=_parse_register(zone_data.get("current_temperature"), required=False),
+        current_humidity=_parse_register(
+            zone_data.get("current_humidity", zone_data.get("humidity")),
+            required=False,
+        ),
         target_temperature=_parse_register(zone_data.get("target_temperature"), required=False),
         hvac_mode=_parse_register(zone_data.get("hvac_mode"), required=False),
         people=[str(person) for person in zone_data.get("people", [])],

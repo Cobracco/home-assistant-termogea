@@ -44,7 +44,8 @@ from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
-LOVELACE_CARD_URL = "/termogea/termogea-zone-grid-card.js"
+LOVELACE_CARD_STATIC_URL = "/termogea/termogea-zone-grid-card.js"
+LOVELACE_CARD_MODULE_URL = "/termogea/termogea-zone-grid-card.js?v=0.1.13"
 LOVELACE_CARD_FILE = Path(__file__).parent / "frontend" / "termogea-zone-grid-card.js"
 DATA_LOVELACE_CARD_REGISTERED = "lovelace_card_registered"
 
@@ -137,7 +138,7 @@ async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
             await hass.http.async_register_static_paths(
                 [
                     StaticPathConfig(
-                        LOVELACE_CARD_URL,
+                        LOVELACE_CARD_STATIC_URL,
                         str(LOVELACE_CARD_FILE),
                         cache_headers=False,
                     )
@@ -145,7 +146,7 @@ async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
             )
         elif hasattr(hass.http, "register_static_path"):
             hass.http.register_static_path(
-                LOVELACE_CARD_URL,
+                LOVELACE_CARD_STATIC_URL,
                 str(LOVELACE_CARD_FILE),
                 cache_headers=False,
             )
@@ -157,11 +158,14 @@ async def _async_register_lovelace_resources(hass: HomeAssistant) -> None:
         pass
 
     if hasattr(frontend, "async_register_extra_module_url"):
-        maybe_awaitable = frontend.async_register_extra_module_url(hass, LOVELACE_CARD_URL)
+        maybe_awaitable = frontend.async_register_extra_module_url(
+            hass,
+            LOVELACE_CARD_MODULE_URL,
+        )
         if isawaitable(maybe_awaitable):
             await maybe_awaitable
     elif hasattr(frontend, "add_extra_js_url"):
-        maybe_awaitable = frontend.add_extra_js_url(hass, LOVELACE_CARD_URL)
+        maybe_awaitable = frontend.add_extra_js_url(hass, LOVELACE_CARD_MODULE_URL)
         if isawaitable(maybe_awaitable):
             await maybe_awaitable
     else:
