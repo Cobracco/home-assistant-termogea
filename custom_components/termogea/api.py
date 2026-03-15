@@ -468,6 +468,58 @@ class TermogeaClient:
                 names[idx] = clean_name
         return names
 
+    @staticmethod
+    def _normalize_controller_name(raw: str) -> str:
+        clean = " ".join(html.unescape(raw).replace("\xa0", " ").split())
+        if clean.lower().startswith("termogea"):
+            return clean
+        return f"Termogea {clean}"
+
+    @classmethod
+    def _extract_controller_name(cls, text: str) -> str | None:
+        patterns = (
+            r"(?i)\bImpianto\s*[A-Za-z0-9._\-]+\b",
+            r"(?i)\bPlant\s*[A-Za-z0-9._\-]+\b",
+            r'(?is)<title[^>]*>(?P<title>.*?)</title>',
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            raw = match.group("title") if "title" in match.groupdict() else match.group(0)
+            candidate = " ".join(html.unescape(raw).replace("\xa0", " ").split())
+            if not candidate:
+                continue
+            if len(candidate) > 80:
+                continue
+            if candidate.startswith("/"):
+                continue
+            if re.fullmatch(r"[0-9.\-]+", candidate):
+                continue
+            if pattern.endswith("title>.*?)</title>") and not re.search(
+                r"(?i)(termogea|impianto|plant|site)",
+                candidate,
+            ):
+                continue
+            return cls._normalize_controller_name(candidate)
+        return None
+
+    async def async_fetch_controller_name(self) -> str | None:
+        """Best-effort fetch of the real plant/controller display name."""
+        for path in (
+            "/webgui/tsg/setup.php?lang=it",
+            "/webgui/tsg/service_mode.php?lang=it",
+            "/webgui/tsg/service_mode.php",
+        ):
+            try:
+                text = await self._async_request("GET", path)
+            except TermogeaApiError:
+                continue
+            name = self._extract_controller_name(text)
+            if name:
+                return name
+        return None
+
     async def async_download_controller_file(self, remote_path: str) -> bytes:
         """Download one controller-side file through the web GUI endpoint."""
         encoded = quote(remote_path, safe="")

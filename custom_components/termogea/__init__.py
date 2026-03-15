@@ -63,6 +63,20 @@ def _looks_like_legacy_name(name: str) -> bool:
     return lowered.startswith("termogea_") or lowered.endswith("_device")
 
 
+def _looks_like_default_controller_title(title: str, host: str) -> bool:
+    normalized = title.strip().lower()
+    host_norm = host.strip().lower()
+    if not normalized:
+        return True
+    if normalized in {host_norm, f"termogea {host_norm}"}:
+        return True
+    if normalized.startswith("termogea "):
+        suffix = normalized.removeprefix("termogea ").strip()
+        if suffix == host_norm or _is_ipv4_or_ipv6(suffix):
+            return True
+    return _is_ipv4_or_ipv6(normalized)
+
+
 def _zone_index(zone_id: str) -> int | None:
     for pattern in (r"(?:zone|zona)\D*(\d+)", r"(\d+)"):
         match = re.search(pattern, zone_id, re.IGNORECASE)
@@ -314,6 +328,31 @@ def _ensure_global_power_switch_enabled(hass: HomeAssistant, entry: ConfigEntry)
         registry.async_update_entity(entity_id, disabled_by=None)
 
 
+def _sync_controller_device_name(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Align controller device display name with config entry title."""
+    registry = dr.async_get(hass)
+    device = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    if device is None:
+        return
+    desired = entry.title.strip()
+    if not desired:
+        return
+    update_kwargs: dict[str, str] = {}
+    current_name = (device.name or "").strip()
+
+    if device.name_by_user is None:
+        if current_name != desired:
+            update_kwargs["name"] = desired
+    elif _looks_like_default_controller_title(device.name_by_user, str(entry.data.get(CONF_HOST, ""))):
+        if device.name_by_user != desired:
+            update_kwargs["name_by_user"] = desired
+        if current_name != desired:
+            update_kwargs["name"] = desired
+
+    if update_kwargs:
+        registry.async_update_device(device.id, **update_kwargs)
+
+
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to the latest version."""
     if entry.version > 3:
@@ -549,6 +588,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await client.async_login()
         await client.async_check_thcontrol_status()
+        try:
+            controller_name = await client.async_fetch_controller_name()
+        except TermogeaApiError:
+            controller_name = None
+        if controller_name and controller_name != entry.title:
+            if _looks_like_default_controller_title(entry.title, host):
+                hass.config_entries.async_update_entry(entry, title=controller_name)
+                entry = hass.config_entries.async_get_entry(entry.entry_id) or entry
         if not storage.config.zones:
             imported = await _bootstrap_storage_from_controller(storage, client)
             if imported:
@@ -578,6 +625,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _sync_zone_device_names(hass, entry, storage.config.zones)
+    _sync_controller_device_name(hass, entry)
     _ensure_global_power_switch_enabled(hass, entry)
     return True
 

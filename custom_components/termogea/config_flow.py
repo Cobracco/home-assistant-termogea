@@ -314,8 +314,12 @@ class TermogeaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 errors["base"] = "cannot_connect"
             else:
+                try:
+                    controller_name = await client.async_fetch_controller_name()
+                except Exception:
+                    controller_name = None
                 entry = self.async_create_entry(
-                    title=f"Termogea {cleaned[CONF_HOST]}",
+                    title=controller_name or f"Termogea {cleaned[CONF_HOST]}",
                     data=cleaned,
                 )
                 return entry
@@ -395,6 +399,10 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             except Exception:
                 errors["base"] = "cannot_connect"
             else:
+                try:
+                    controller_name = await client.async_fetch_controller_name()
+                except Exception:
+                    controller_name = None
                 preserved_options = dict(self.config_entry.options)
                 for key in (
                     CONF_HOST,
@@ -408,6 +416,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
 
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
+                    title=controller_name or self.config_entry.title,
                     data={**self.config_entry.data, **cleaned},
                     options=preserved_options,
                 )
