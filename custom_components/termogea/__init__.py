@@ -567,6 +567,8 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             if zone.enabled != enabled:
                 zone.enabled = enabled
                 await storage.async_upsert_zone(zone)
+                coordinator: TermogeaDataUpdateCoordinator = entry_data[DATA_COORDINATOR]
+                coordinator.async_set_updated_data(dict(coordinator.data))
             await _apply_policy(zone, entry_data)
             return
         raise HomeAssistantError(f"Unknown Termogea zone_id: {zone_id}")
