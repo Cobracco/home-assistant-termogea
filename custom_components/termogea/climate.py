@@ -193,6 +193,12 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
                 zone.eco_temp = requested
             await self._storage.async_upsert_zone(zone)
 
+        snapshot = self.coordinator.data.get(self._zone_id)
+        if snapshot is not None:
+            snapshot.target_temperature = requested
+            # Push immediate UI update instead of waiting the next full poll.
+            self.coordinator.async_set_updated_data(dict(self.coordinator.data))
+
         await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
