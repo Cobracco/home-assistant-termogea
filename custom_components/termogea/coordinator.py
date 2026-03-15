@@ -35,7 +35,11 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
 
     async def _async_update_data(self) -> dict[str, ZoneSnapshot]:
         try:
-            await self.client.async_check_thcontrol_status()
+            try:
+                await self.client.async_check_thcontrol_status()
+            except TermogeaApiError as err:
+                # Do not fail the whole update cycle when status endpoint is flaky.
+                _LOGGER.warning("Termogea status check failed, continuing with cached session: %s", err)
             snapshots: dict[str, ZoneSnapshot] = {}
             for zone in self.zones:
                 previous = self.data.get(zone.zone_id) if isinstance(self.data, dict) else None
@@ -109,6 +113,8 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                     raw_values=raw_values,
                 )
 
+            if not snapshots and isinstance(self.data, dict):
+                return self.data
             return snapshots
         except TermogeaApiError as err:
             raise UpdateFailed(str(err)) from err
