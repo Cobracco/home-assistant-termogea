@@ -270,6 +270,30 @@ class TermogeaClient:
         return candidates
 
     @staticmethod
+    def _temperature_name_candidates_from_zone_index(zone_index: int) -> list[str]:
+        return [
+            f"Zone{zone_index} temp",
+            f"Zone {zone_index} temp",
+            f"Zona{zone_index} temp",
+            f"Zona {zone_index} temp",
+            f"T zona {zone_index}",
+            f"T zone {zone_index}",
+        ]
+
+    @staticmethod
+    def _humidity_name_candidates_from_zone_index(zone_index: int) -> list[str]:
+        return [
+            f"Zone{zone_index} hum",
+            f"Zone {zone_index} hum",
+            f"Zona{zone_index} hum",
+            f"Zona {zone_index} hum",
+            f"Zone{zone_index} humidity",
+            f"Zone {zone_index} humidity",
+            f"UR zona {zone_index}",
+            f"UR zone {zone_index}",
+        ]
+
+    @staticmethod
     def _guess_zone_humidity_register(
         register_catalog: dict[str, tuple[RegisterDefinition, str]],
         zone_index: int,
@@ -684,6 +708,7 @@ class TermogeaClient:
             custom_section = custom_parser[section_name] if custom_parser.has_section(section_name) else {}
 
             tnow_name = self._strip_quotes(section.get("THC_TNOW_REG_NAME", ""))
+            disp_tnow_name = self._strip_quotes(section.get("THC_DISP_TNOW_REG_NAME", ""))
             tset_name = self._strip_quotes(section.get("THC_TSET_REG_NAME", ""))
             onoff_name = self._strip_quotes(section.get("THC_ONOFF_REG_NAME", ""))
             hnow_name = self._first_non_empty_option(
@@ -693,6 +718,7 @@ class TermogeaClient:
                     "THC_HUM_NOW_REG_NAME",
                     "THC_RHNOW_REG_NAME",
                     "THC_HUMIDITY_REG_NAME",
+                    "THC_DISP_HNOW_REG_NAME",
                 ),
             )
             if not hnow_name:
@@ -701,6 +727,13 @@ class TermogeaClient:
             current_def = (
                 self._find_register_by_names(register_catalog, [tnow_name]) if tnow_name else None
             )
+            if current_def is None and disp_tnow_name:
+                current_def = self._find_register_by_names(register_catalog, [disp_tnow_name])
+            if current_def is None:
+                current_def = self._find_register_by_names(
+                    register_catalog,
+                    self._temperature_name_candidates_from_zone_index(idx),
+                )
             humidity_def = (
                 self._find_register_by_names(register_catalog, [hnow_name]) if hnow_name else None
             )
@@ -713,6 +746,16 @@ class TermogeaClient:
                 humidity_def = self._find_register_by_names(
                     register_catalog,
                     self._humidity_name_candidates_from_temperature_name(tnow_name, idx),
+                )
+            if humidity_def is None and disp_tnow_name:
+                humidity_def = self._find_register_by_names(
+                    register_catalog,
+                    self._humidity_name_candidates_from_temperature_name(disp_tnow_name, idx),
+                )
+            if humidity_def is None:
+                humidity_def = self._find_register_by_names(
+                    register_catalog,
+                    self._humidity_name_candidates_from_zone_index(idx),
                 )
             if humidity_def is None:
                 humidity_def = self._guess_zone_humidity_register(
