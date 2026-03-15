@@ -192,6 +192,10 @@ def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Sch
             "manual_override_allowed",
             default=defaults.manual_override_allowed,
         ): bool,
+        vol.Required(
+            "custom_setpoints",
+            default=defaults.custom_setpoints,
+        ): bool,
         vol.Required("is_common_area", default=defaults.is_common_area): bool,
         vol.Optional("people", default=defaults.people): selector.EntitySelector(
             selector.EntitySelectorConfig(
@@ -507,6 +511,18 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         current_zone = zone
         if current_zone is None and self._editing_zone_id:
             current_zone = storage.get_zone(self._editing_zone_id)
+        if current_zone is None:
+            defaults = storage.config.global_config
+            current_zone = ZoneDefinition(
+                zone_id="",
+                name="",
+                custom_setpoints=False,
+                comfort_temp=float(defaults.comfort_temp),
+                eco_temp=float(defaults.eco_temp),
+                away_temp=float(defaults.away_temp),
+                night_temp=float(defaults.night_temp),
+                inactive_temp=float(defaults.inactive_temp),
+            )
         errors: dict[str, str] = {}
         if user_input is not None:
             zone_id = str(user_input["zone_id"]).strip()
@@ -530,12 +546,20 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     is_common_area=bool(user_input["is_common_area"]),
                     enabled=bool(user_input["enabled"]),
                     manual_override_allowed=bool(user_input["manual_override_allowed"]),
+                    custom_setpoints=bool(user_input.get("custom_setpoints", False)),
                     comfort_temp=float(user_input["comfort_temp"]),
                     eco_temp=float(user_input["eco_temp"]),
                     away_temp=float(user_input["away_temp"]),
                     night_temp=float(user_input["night_temp"]),
                     inactive_temp=float(user_input["inactive_temp"]),
                 )
+                if not updated_zone.custom_setpoints:
+                    global_config = storage.config.global_config
+                    updated_zone.comfort_temp = float(global_config.comfort_temp)
+                    updated_zone.eco_temp = float(global_config.eco_temp)
+                    updated_zone.away_temp = float(global_config.away_temp)
+                    updated_zone.night_temp = float(global_config.night_temp)
+                    updated_zone.inactive_temp = float(global_config.inactive_temp)
                 await storage.async_upsert_zone(updated_zone)
                 if current_zone and current_zone.zone_id != zone_id:
                     await storage.async_delete_zone(current_zone.zone_id)
@@ -543,7 +567,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 return await self._async_finish_and_reload()
 
         return self.async_show_form(
-            step_id="add_zone" if current_zone is None else "zone_policy",
+            step_id="add_zone" if zone is None and not self._editing_zone_id else "zone_policy",
             data_schema=_zone_policy_schema(self.hass, current_zone),
             errors=errors,
         )
@@ -594,6 +618,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 is_common_area=current_zone.is_common_area,
                 enabled=current_zone.enabled,
                 manual_override_allowed=current_zone.manual_override_allowed,
+                custom_setpoints=current_zone.custom_setpoints,
                 comfort_temp=current_zone.comfort_temp,
                 eco_temp=current_zone.eco_temp,
                 away_temp=current_zone.away_temp,

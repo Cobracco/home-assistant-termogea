@@ -123,6 +123,8 @@ def _zone_mode_value(zone: ZoneDefinition, mode: str) -> float:
 
 def _seasonal_zone_target(zone: ZoneDefinition, settings: GlobalConfig, season: str, mode: str) -> float:
     """Apply seasonal delta while preserving zone-specific offsets."""
+    if not zone.custom_setpoints:
+        return _season_mode_value(settings, season, mode)
     zone_value = _zone_mode_value(zone, mode)
     seasonal_global = _season_mode_value(settings, season, mode)
     legacy_global = _legacy_mode_value(settings, mode)

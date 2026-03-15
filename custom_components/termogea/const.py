@@ -47,6 +47,7 @@ ATTR_ACTIVE_MODE = "active_mode"
 ATTR_MAPPING_COMPLETE = "mapping_complete"
 ATTR_ENABLED = "enabled"
 ATTR_MANUAL_OVERRIDE_ALLOWED = "manual_override_allowed"
+ATTR_CUSTOM_SETPOINTS = "custom_setpoints"
 
 GLOBAL_MODE_AUTO = "auto"
 GLOBAL_MODE_COMFORT = "comfort"

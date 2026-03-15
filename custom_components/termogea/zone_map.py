@@ -101,6 +101,7 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         is_common_area=bool(zone_data.get("is_common_area", False)),
         enabled=bool(zone_data.get("enabled", True)),
         manual_override_allowed=bool(zone_data.get("manual_override_allowed", True)),
+        custom_setpoints=bool(zone_data.get("custom_setpoints", False)),
         comfort_temp=comfort,
         eco_temp=eco,
         away_temp=away,

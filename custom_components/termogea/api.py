@@ -815,6 +815,7 @@ class TermogeaClient:
                     night_temp=night,
                     inactive_temp=inactive,
                     enabled=zone_enabled,
+                    custom_setpoints=False,
                 )
             )
 

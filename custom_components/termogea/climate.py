@@ -20,6 +20,7 @@ from .const import (
     ATTR_EFFECTIVE_TARGET,
     ATTR_ENABLED,
     ATTR_IS_COMMON_AREA,
+    ATTR_CUSTOM_SETPOINTS,
     ATTR_MANUAL_OVERRIDE_ALLOWED,
     ATTR_MAPPING_COMPLETE,
     ATTR_POLICY_REASON,
@@ -141,6 +142,7 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
             ATTR_MAPPING_COMPLETE: zone.mapping_complete,
             ATTR_ENABLED: zone.enabled,
             ATTR_MANUAL_OVERRIDE_ALLOWED: zone.manual_override_allowed,
+            ATTR_CUSTOM_SETPOINTS: zone.custom_setpoints,
         }
 
     @property
