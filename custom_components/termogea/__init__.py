@@ -169,7 +169,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await storage.async_load()
         if not storage.config.zones:
-            await storage.async_initialize_from_yaml(zone_map_path)
+            try:
+                await storage.async_initialize_from_yaml(zone_map_path)
+            except ZoneMapError as err:
+                # In v1 persistent mode the legacy YAML is optional: startup must continue.
+                if "Zone map file not found:" in str(err):
+                    _LOGGER.info(
+                        "Termogea legacy YAML not found at %s; starting with empty persistent config",
+                        zone_map_path,
+                    )
+                else:
+                    raise
     except ZoneMapError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
