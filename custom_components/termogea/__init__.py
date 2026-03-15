@@ -231,6 +231,73 @@ async def _is_humidity_register_readable(
     return 0.0 <= value <= 100.0
 
 
+async def _is_temperature_register_readable(
+    client: TermogeaClient,
+    register: RegisterDefinition,
+) -> bool:
+    try:
+        _raw, value = await client.async_read_register(register)
+    except TermogeaApiError:
+        return False
+    if value is None:
+        return False
+    # Defensive physical range for room temperature.
+    return -20.0 <= value <= 60.0
+
+
+async def _repair_zone_temperature_mapping_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Repair stale temperature mapping by validating current vs controller mapping."""
+    try:
+        _global, imported_zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return
+    if not imported_zones:
+        return
+
+    imported_temperature: dict[int, RegisterDefinition] = {}
+    for imported in imported_zones:
+        idx = _zone_index(imported.zone_id)
+        if idx is None or imported.current_temperature is None:
+            continue
+        imported_temperature[idx] = imported.current_temperature
+
+    if not imported_temperature:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        imported_register = imported_temperature.get(idx)
+        if imported_register is None:
+            continue
+
+        current_register = zone.current_temperature
+        if current_register is None:
+            zone.current_temperature = imported_register
+            changed = True
+            continue
+
+        if _same_mod_reg(current_register, imported_register):
+            continue
+
+        current_ok = await _is_temperature_register_readable(client, current_register)
+        if current_ok:
+            continue
+
+        imported_ok = await _is_temperature_register_readable(client, imported_register)
+        if imported_ok:
+            zone.current_temperature = imported_register
+            changed = True
+
+    if changed:
+        await storage.async_save()
+
+
 async def _repair_zone_humidity_mapping_from_controller(
     storage: TermogeaStorageManager,
     client: TermogeaClient,
@@ -605,6 +672,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
         if storage.config.zones:
             await _sync_zone_names_from_controller(storage, client)
+            await _repair_zone_temperature_mapping_from_controller(storage, client)
             if any(zone.current_humidity is None for zone in storage.config.zones):
                 await _sync_zone_humidity_mapping_from_controller(storage, client)
             await _repair_zone_humidity_mapping_from_controller(storage, client)
