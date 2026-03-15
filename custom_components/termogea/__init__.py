@@ -10,6 +10,7 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr
 
 from .api import TermogeaApiError, TermogeaAuthError, TermogeaClient
 from .const import (
@@ -37,6 +38,39 @@ from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _zone_identifiers(entry_id: str, zone_id: str) -> tuple[str, ...]:
+    return (
+        f"{entry_id}_zone_{zone_id}",
+        f"{entry_id}_{zone_id}_device",
+        f"termogea_{zone_id}_device",
+        f"Termogea_{zone_id}_device",
+        f"{zone_id}_device",
+    )
+
+
+def _looks_like_legacy_name(name: str) -> bool:
+    lowered = name.strip().lower()
+    return lowered.startswith("termogea_") or lowered.endswith("_device")
+
+
+def _sync_zone_device_names(hass: HomeAssistant, entry: ConfigEntry, zones: list[ZoneDefinition]) -> None:
+    """Align legacy zone device names with configured zone names."""
+    registry = dr.async_get(hass)
+    for zone in zones:
+        desired = (zone.name or zone.zone_id).strip() or zone.zone_id
+        device = None
+        for identifier in _zone_identifiers(entry.entry_id, zone.zone_id):
+            device = registry.async_get_device(identifiers={(DOMAIN, identifier)})
+            if device is not None:
+                break
+        if device is None:
+            continue
+        current_name = device.name or ""
+        if device.name_by_user is None or _looks_like_legacy_name(current_name):
+            if current_name != desired:
+                registry.async_update_device(device.id, name=desired)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -272,6 +306,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _sync_zone_device_names(hass, entry, storage.config.zones)
     return True
 
 
