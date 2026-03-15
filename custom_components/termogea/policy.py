@@ -97,18 +97,6 @@ def _season_mode_value(settings: GlobalConfig, season: str, mode: str) -> float:
     )
 
 
-def _legacy_mode_value(settings: GlobalConfig, mode: str) -> float:
-    if mode == GLOBAL_MODE_COMFORT:
-        return settings.comfort_temp
-    if mode == GLOBAL_MODE_ECO:
-        return settings.eco_temp
-    if mode == GLOBAL_MODE_AWAY:
-        return settings.away_temp
-    if mode == GLOBAL_MODE_NIGHT:
-        return settings.night_temp
-    return settings.inactive_temp
-
-
 def _zone_mode_value(zone: ZoneDefinition, mode: str) -> float:
     if mode == GLOBAL_MODE_COMFORT:
         return zone.comfort_temp
@@ -122,13 +110,12 @@ def _zone_mode_value(zone: ZoneDefinition, mode: str) -> float:
 
 
 def _seasonal_zone_target(zone: ZoneDefinition, settings: GlobalConfig, season: str, mode: str) -> float:
-    """Apply seasonal delta while preserving zone-specific offsets."""
+    """Resolve effective target for one zone and one mode."""
     if not zone.custom_setpoints:
         return _season_mode_value(settings, season, mode)
-    zone_value = _zone_mode_value(zone, mode)
-    seasonal_global = _season_mode_value(settings, season, mode)
-    legacy_global = _legacy_mode_value(settings, mode)
-    return round(zone_value + (seasonal_global - legacy_global), 2)
+    # Custom zone temperatures are absolute values and must not be shifted by
+    # legacy/global deltas, otherwise runtime setpoint changes "bounce back".
+    return _zone_mode_value(zone, mode)
 
 
 def resolve_active_mode(settings: GlobalConfig) -> str:

@@ -33,6 +33,7 @@ SERVICE_IMPORT_CONTROLLER_CONFIG = "import_controller_config"
 SERVICE_FORCE_RELOGIN = "force_relogin"
 SERVICE_APPLY_ZONE_POLICY = "apply_zone_policy"
 SERVICE_APPLY_ALL_ZONE_POLICIES = "apply_all_zone_policies"
+SERVICE_SET_ZONE_ENABLED = "set_zone_enabled"
 
 ATTR_ZONE_ID = "zone_id"
 ATTR_ASSIGNED_PEOPLE = "assigned_people"

@@ -28,3 +28,18 @@ apply_zone_policy:
 apply_all_zone_policies:
   name: Apply all zone policies
   description: Evaluate policy inputs for every configured zone and write the resulting state to Termogea.
+
+set_zone_enabled:
+  name: Set zone enabled
+  description: Enable or disable one zone in persistent policy config and apply the resulting command immediately.
+  fields:
+    zone_id:
+      name: Zone ID
+      required: true
+      description: Zone identifier defined in the Termogea zone map.
+      example: zona_1
+    enabled:
+      name: Enabled
+      required: true
+      description: True to enable the zone, false to disable it (safety/off target).
+      example: false

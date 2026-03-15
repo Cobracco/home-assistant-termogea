@@ -17,6 +17,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .api import TermogeaApiError, TermogeaAuthError, TermogeaClient
 from .const import (
+    ATTR_ENABLED,
     ATTR_ZONE_ID,
     CONF_REQUEST_TIMEOUT,
     CONF_SCAN_INTERVAL,
@@ -34,6 +35,7 @@ from .const import (
     SERVICE_FORCE_RELOGIN,
     SERVICE_IMPORT_CONTROLLER_CONFIG,
     SERVICE_IMPORT_LEGACY_YAML,
+    SERVICE_SET_ZONE_ENABLED,
 )
 from .coordinator import TermogeaDataUpdateCoordinator
 from .models import RegisterDefinition, ZoneDefinition
@@ -554,6 +556,21 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             for zone in storage.config.zones:
                 await _apply_policy(zone, entry_data)
 
+    async def _set_zone_enabled_service(call: ServiceCall) -> None:
+        zone_id = call.data[ATTR_ZONE_ID]
+        enabled = bool(call.data[ATTR_ENABLED])
+        for entry_data in hass.data[DOMAIN].values():
+            storage: TermogeaStorageManager = entry_data[DATA_STORAGE]
+            zone = storage.get_zone(zone_id)
+            if zone is None:
+                continue
+            if zone.enabled != enabled:
+                zone.enabled = enabled
+                await storage.async_upsert_zone(zone)
+            await _apply_policy(zone, entry_data)
+            return
+        raise HomeAssistantError(f"Unknown Termogea zone_id: {zone_id}")
+
     if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_LEGACY_YAML):
         hass.services.async_register(
             DOMAIN,
@@ -577,6 +594,17 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             DOMAIN,
             SERVICE_APPLY_ALL_ZONE_POLICIES,
             _apply_all_zone_policies_service,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_ZONE_ENABLED,
+            _set_zone_enabled_service,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ZONE_ID): str,
+                    vol.Required(ATTR_ENABLED): bool,
+                }
+            ),
         )
 
     return True
