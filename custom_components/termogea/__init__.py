@@ -191,7 +191,7 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Termogea from a config entry."""
     options = {**entry.data, **entry.options}
-    host = options.get(CONF_HOST) or entry.unique_id
+    host = options.get(CONF_HOST)
     username = options.get(CONF_USERNAME)
     password = options.get(CONF_PASSWORD)
     if not host or not username or not password:
@@ -199,10 +199,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Missing required Termogea connection settings (host/username/password). "
             "Open the integration and run Reconfigure."
         )
-    if CONF_HOST not in entry.data and host:
-        migrated_data = dict(entry.data)
-        migrated_data[CONF_HOST] = host
-        hass.config_entries.async_update_entry(entry, data=migrated_data)
 
     zone_map_path = options.get(CONF_ZONE_MAP_PATH, DEFAULT_ZONE_MAP_PATH)
     scan_interval = int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))

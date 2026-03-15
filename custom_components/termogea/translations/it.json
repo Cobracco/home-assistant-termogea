@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connetti Termogea",
-        "description": "Configura il controller locale Termogea e il file YAML della mappa zone.",
+        "description": "Configura il controller locale Termogea e il percorso legacy opzionale della mappa zone.",
         "data": {
           "host": "Host",
           "username": "Username",
@@ -24,6 +24,165 @@
     },
     "abort": {
       "already_configured": "Questo host Termogea è già configurato."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni Termogea",
+        "menu_options": {
+          "connection": "Connessione",
+          "global_settings": "Parametri globali",
+          "add_zone": "Aggiungi zona",
+          "edit_zone_select": "Modifica zona",
+          "delete_zone_select": "Elimina zona",
+          "add_schedule": "Aggiungi fascia oraria",
+          "edit_schedule_select": "Modifica fascia oraria",
+          "delete_schedule_select": "Elimina fascia oraria",
+          "import_legacy_yaml": "Importa YAML legacy"
+        }
+      },
+      "connection": {
+        "title": "Impostazioni connessione",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "zone_map_path": "Percorso mappa zone",
+          "scan_interval": "Intervallo polling (secondi)",
+          "request_timeout": "Timeout HTTP (secondi)"
+        }
+      },
+      "global_settings": {
+        "title": "Parametri globali policy",
+        "data": {
+          "global_enabled": "Abilitazione globale",
+          "automations_enabled": "Automazioni abilitate",
+          "allow_common_without_people": "Consenti zone comuni senza persone",
+          "global_mode": "Modalita globale",
+          "auto_fallback_mode": "Modalita fallback auto",
+          "schedule_enabled": "Fasce orarie abilitate",
+          "comfort_temp": "Temperatura comfort",
+          "eco_temp": "Temperatura eco",
+          "away_temp": "Temperatura away",
+          "night_temp": "Temperatura night",
+          "inactive_temp": "Temperatura inattiva/off"
+        }
+      },
+      "add_zone": {
+        "title": "Aggiungi policy zona",
+        "data": {
+          "zone_id": "ID zona",
+          "name": "Nome zona",
+          "enabled": "Abilitata",
+          "manual_override_allowed": "Override manuale consentito",
+          "is_common_area": "Zona comune",
+          "people": "Persone assegnate",
+          "presence_sensor": "Sensore presenza",
+          "comfort_temp": "Temperatura comfort",
+          "eco_temp": "Temperatura eco",
+          "away_temp": "Temperatura away",
+          "night_temp": "Temperatura night",
+          "inactive_temp": "Temperatura inattiva/off"
+        }
+      },
+      "zone_policy": {
+        "title": "Modifica policy zona",
+        "data": {
+          "zone_id": "ID zona",
+          "name": "Nome zona",
+          "enabled": "Abilitata",
+          "manual_override_allowed": "Override manuale consentito",
+          "is_common_area": "Zona comune",
+          "people": "Persone assegnate",
+          "presence_sensor": "Sensore presenza",
+          "comfort_temp": "Temperatura comfort",
+          "eco_temp": "Temperatura eco",
+          "away_temp": "Temperatura away",
+          "night_temp": "Temperatura night",
+          "inactive_temp": "Temperatura inattiva/off"
+        }
+      },
+      "zone_mapping": {
+        "title": "Mapping tecnico zona",
+        "data": {
+          "current_mod": "MOD temperatura attuale",
+          "current_reg": "REG temperatura attuale",
+          "current_scale": "Scala temperatura attuale",
+          "current_precision": "Precisione temperatura attuale",
+          "target_mod": "MOD temperatura target",
+          "target_reg": "REG temperatura target",
+          "target_scale": "Scala temperatura target",
+          "target_precision": "Precisione temperatura target",
+          "target_min_value": "Target minimo",
+          "target_max_value": "Target massimo",
+          "target_step": "Step target",
+          "hvac_mod": "MOD modalita HVAC",
+          "hvac_reg": "REG modalita HVAC",
+          "hvac_off_value": "Valore raw HVAC OFF",
+          "hvac_heat_value": "Valore raw HVAC HEAT"
+        }
+      },
+      "edit_zone_select": {
+        "title": "Seleziona zona da modificare",
+        "data": {
+          "zone_id": "ID zona"
+        }
+      },
+      "delete_zone_select": {
+        "title": "Seleziona zona da eliminare",
+        "data": {
+          "zone_id": "ID zona"
+        }
+      },
+      "add_schedule": {
+        "title": "Aggiungi fascia oraria",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "schedule": {
+        "title": "Modifica fascia oraria",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "edit_schedule_select": {
+        "title": "Seleziona fascia da modificare",
+        "data": {
+          "rule_id": "ID fascia"
+        }
+      },
+      "delete_schedule_select": {
+        "title": "Seleziona fascia da eliminare",
+        "data": {
+          "rule_id": "ID fascia"
+        }
+      },
+      "import_legacy_yaml": {
+        "title": "Importa YAML legacy",
+        "data": {
+          "zone_map_path": "Percorso mappa zone"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi al controller Termogea.",
+      "invalid_auth": "Credenziali non valide.",
+      "invalid_zone_map": "Il file YAML della mappa zone manca o non è valido.",
+      "duplicate_zone": "Esiste gia una zona con questo ID.",
+      "duplicate_schedule": "Esiste gia una fascia oraria con questo ID.",
+      "invalid_zone": "ID zona non valido."
     }
   }
 }

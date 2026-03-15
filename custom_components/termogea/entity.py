@@ -28,6 +28,9 @@ def zone_device_info(entry: ConfigEntry, zone: ZoneDefinition) -> DeviceInfo:
         identifiers={
             (DOMAIN, f"{entry.entry_id}_zone_{zone.zone_id}"),
             (DOMAIN, f"{entry.entry_id}_{zone.zone_id}_device"),
+            (DOMAIN, f"termogea_{zone.zone_id}_device"),
+            (DOMAIN, f"Termogea_{zone.zone_id}_device"),
+            (DOMAIN, f"{zone.zone_id}_device"),
         },
         name=zone.name or zone.zone_id,
         manufacturer="Termogea",
