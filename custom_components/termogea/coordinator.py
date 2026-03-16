@@ -71,8 +71,15 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                             zone.current_humidity
                         )
                         raw_values["current_humidity"] = humidity_raw
-                        if humidity_value is not None and not (0.0 < humidity_value <= 100.0):
+                        if humidity_raw in (None, 0, 65535):
                             humidity_value = None
+                        elif humidity_value is not None and not (0.0 < humidity_value <= 100.0):
+                            # Some controllers expose humidity in tenths even when
+                            # register metadata scale is 1.0 (e.g. 552 => 55.2%).
+                            if 0 < humidity_raw <= 1000:
+                                humidity_value = round(float(humidity_raw) / 10.0, 1)
+                            else:
+                                humidity_value = None
                     except TermogeaApiError as err:
                         _LOGGER.warning(
                             "Zone %s humidity read failed: %s",
