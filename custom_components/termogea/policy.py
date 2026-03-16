@@ -118,6 +118,23 @@ def _seasonal_zone_target(zone: ZoneDefinition, settings: GlobalConfig, season: 
     return _zone_mode_value(zone, mode)
 
 
+def _active_manual_override_target(zone: ZoneDefinition) -> float | None:
+    """Return manual override target when active, otherwise None."""
+    if not zone.manual_override_allowed:
+        return None
+    if zone.manual_override_temp is None or not zone.manual_override_until:
+        return None
+
+    until = dt_util.parse_datetime(zone.manual_override_until)
+    if until is None:
+        return None
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=dt_util.UTC)
+    if dt_util.utcnow() >= dt_util.as_utc(until):
+        return None
+    return float(zone.manual_override_temp)
+
+
 def resolve_active_mode(settings: GlobalConfig) -> str:
     """Resolve the effective active mode including schedule."""
     mode = settings.global_mode.lower()
@@ -181,6 +198,18 @@ def evaluate_zone_policy(
             active_mode=active_mode,
         )
 
+    # Hard gate requested for v1 UX: when nobody is home every zone goes to the
+    # same conservation temperature, regardless of per-zone assignment.
+    if not house_people_present:
+        return PolicyDecision(
+            assigned_people_present=assigned_people_present,
+            presence_detected=presence_detected,
+            zone_enabled=False,
+            policy_reason="home_empty_conservation",
+            effective_target=_season_mode_value(settings, active_season, GLOBAL_MODE_OFF),
+            active_mode=active_mode,
+        )
+
     if zone.is_common_area:
         people_gate = house_people_present or assigned_people_present
         eligible = people_gate or (settings.allow_common_without_people and presence_detected)
@@ -193,7 +222,7 @@ def evaluate_zone_policy(
             presence_detected=presence_detected,
             zone_enabled=False,
             policy_reason="no_people_assigned_home",
-            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_AWAY),
+            effective_target=_season_mode_value(settings, active_season, GLOBAL_MODE_OFF),
             active_mode=active_mode,
         )
 
@@ -214,6 +243,17 @@ def evaluate_zone_policy(
             zone_enabled=False,
             policy_reason="global_away",
             effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_AWAY),
+            active_mode=active_mode,
+        )
+
+    manual_override_target = _active_manual_override_target(zone)
+    if manual_override_target is not None:
+        return PolicyDecision(
+            assigned_people_present=assigned_people_present,
+            presence_detected=presence_detected,
+            zone_enabled=True,
+            policy_reason="manual_override",
+            effective_target=manual_override_target,
             active_mode=active_mode,
         )
 

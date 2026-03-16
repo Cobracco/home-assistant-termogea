@@ -102,6 +102,12 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         is_common_area=bool(zone_data.get("is_common_area", False)),
         enabled=bool(zone_data.get("enabled", True)),
         manual_override_allowed=bool(zone_data.get("manual_override_allowed", True)),
+        manual_override_temp=_parse_optional_float(zone_data.get("manual_override_temp")),
+        manual_override_until=(
+            str(zone_data.get("manual_override_until")).strip()
+            if zone_data.get("manual_override_until") not in (None, "")
+            else None
+        ),
         custom_setpoints=bool(zone_data.get("custom_setpoints", False)),
         comfort_temp=comfort,
         eco_temp=eco,

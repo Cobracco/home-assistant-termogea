@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     ClimateEntityFeature,
@@ -9,9 +11,12 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_ACTIVE_MODE,
@@ -33,10 +38,7 @@ from .const import (
     DATA_COORDINATOR,
     DATA_STORAGE,
     DOMAIN,
-    GLOBAL_MODE_AWAY,
-    GLOBAL_MODE_COMFORT,
-    GLOBAL_MODE_NIGHT,
-    GLOBAL_MODE_OFF,
+    SERVICE_APPLY_ZONE_POLICY,
 )
 from .entity import zone_device_info
 from .models import ZoneDefinition
@@ -66,6 +68,7 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         super().__init__(coordinator)
         self._storage = storage
         self._zone_id = zone.zone_id
+        self._manual_override_unsub = None
         self._attr_name = zone.name
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}"
         if zone.hvac_mode is not None:
@@ -73,6 +76,14 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
             self._attr_supported_features |= ClimateEntityFeature.TURN_OFF
         else:
             self._attr_hvac_modes = [HVACMode.HEAT]
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._async_restore_manual_override_timer()
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._cancel_manual_override_timer()
+        await super().async_will_remove_from_hass()
 
     @property
     def _zone(self) -> ZoneDefinition:
@@ -161,6 +172,75 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
     def device_info(self) -> DeviceInfo:
         return zone_device_info(self.coordinator.config_entry, self._zone)
 
+    @staticmethod
+    def _manual_override_until_from_zone(zone: ZoneDefinition):
+        if not zone.manual_override_until:
+            return None
+        until = dt_util.parse_datetime(zone.manual_override_until)
+        if until is None:
+            return None
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=dt_util.UTC)
+        return dt_util.as_utc(until)
+
+    def _cancel_manual_override_timer(self) -> None:
+        if self._manual_override_unsub is not None:
+            self._manual_override_unsub()
+            self._manual_override_unsub = None
+
+    @callback
+    def _async_manual_override_expired(self, _when) -> None:
+        self._manual_override_unsub = None
+        self.hass.async_create_task(self._async_clear_manual_override_and_reapply())
+
+    def _schedule_manual_override_timer(self) -> None:
+        self._cancel_manual_override_timer()
+        zone = self._zone
+        if zone.manual_override_temp is None:
+            return
+        until = self._manual_override_until_from_zone(zone)
+        if until is None:
+            return
+        self._manual_override_unsub = async_track_point_in_utc_time(
+            self.hass,
+            self._async_manual_override_expired,
+            until,
+        )
+
+    async def _async_restore_manual_override_timer(self) -> None:
+        zone = self._zone
+        if zone.manual_override_temp is None:
+            return
+        until = self._manual_override_until_from_zone(zone)
+        if until is None or dt_util.utcnow() >= until:
+            await self._async_clear_manual_override_and_reapply()
+            return
+        self._schedule_manual_override_timer()
+
+    async def _async_clear_manual_override_and_reapply(self) -> None:
+        zone = self._zone
+        changed = False
+        if zone.manual_override_temp is not None:
+            zone.manual_override_temp = None
+            changed = True
+        if zone.manual_override_until is not None:
+            zone.manual_override_until = None
+            changed = True
+        if not changed:
+            return
+
+        await self._storage.async_upsert_zone(zone)
+
+        if self.hass.services.has_service(DOMAIN, SERVICE_APPLY_ZONE_POLICY):
+            await self.hass.services.async_call(
+                DOMAIN,
+                SERVICE_APPLY_ZONE_POLICY,
+                {ATTR_ZONE_ID: zone.zone_id},
+                blocking=False,
+            )
+        else:
+            await self.coordinator.async_request_refresh()
+
     async def async_set_temperature(self, **kwargs) -> None:
         temperature = kwargs.get("temperature")
         zone = self._zone
@@ -173,33 +253,11 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         )
 
         if zone.manual_override_allowed:
-            # Keep manual user setpoint stable against automatic policy writes.
-            decision = evaluate_zone_policy(
-                self.hass,
-                zone,
-                self._storage.config.zones,
-                self._storage.config.global_config,
-            )
-            zone.custom_setpoints = True
-            mode = decision.active_mode
-            if mode == GLOBAL_MODE_COMFORT or decision.policy_reason == "presence_comfort":
-                zone.comfort_temp = requested
-            elif mode == GLOBAL_MODE_NIGHT:
-                zone.night_temp = requested
-            elif mode == GLOBAL_MODE_AWAY or decision.policy_reason in {
-                "no_people_assigned_home",
-                "global_away",
-            }:
-                zone.away_temp = requested
-            elif mode == GLOBAL_MODE_OFF or decision.policy_reason in {
-                "global_off",
-                "global_disabled",
-                "zone_disabled",
-            }:
-                zone.inactive_temp = requested
-            else:
-                zone.eco_temp = requested
+            until = dt_util.utcnow() + timedelta(hours=1)
+            zone.manual_override_temp = requested
+            zone.manual_override_until = until.isoformat()
             await self._storage.async_upsert_zone(zone)
+            self._schedule_manual_override_timer()
 
         snapshot = self.coordinator.data.get(self._zone_id)
         if snapshot is not None:

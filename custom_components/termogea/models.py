@@ -100,6 +100,8 @@ class ZoneDefinition:
     is_common_area: bool = False
     enabled: bool = True
     manual_override_allowed: bool = True
+    manual_override_temp: float | None = None
+    manual_override_until: str | None = None
     custom_setpoints: bool = False
     comfort_temp: float = 21.0
     eco_temp: float = 18.5
@@ -145,6 +147,8 @@ class ZoneDefinition:
             "is_common_area": self.is_common_area,
             "enabled": self.enabled,
             "manual_override_allowed": self.manual_override_allowed,
+            "manual_override_temp": self.manual_override_temp,
+            "manual_override_until": self.manual_override_until,
             "custom_setpoints": self.custom_setpoints,
             "comfort_temp": self.comfort_temp,
             "eco_temp": self.eco_temp,
