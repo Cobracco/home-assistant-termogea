@@ -338,7 +338,8 @@ async def _is_humidity_register_readable(
     if value is None:
         return False
     # Humidity values out of physical range are considered invalid mapping.
-    return 0.0 <= value <= 100.0
+    # 0% and >100% are treated as invalid for residential zones.
+    return 0.0 < value <= 100.0
 
 
 async def _is_temperature_register_readable(
@@ -420,10 +421,10 @@ async def _repair_zone_humidity_mapping_from_controller(
     if not imported_zones:
         return
 
-    imported_humidity: dict[int, RegisterDefinition] = {}
+    imported_humidity: dict[int, RegisterDefinition | None] = {}
     for imported in imported_zones:
         idx = _zone_index(imported.zone_id)
-        if idx is None or imported.current_humidity is None:
+        if idx is None:
             continue
         imported_humidity[idx] = imported.current_humidity
 
@@ -437,6 +438,9 @@ async def _repair_zone_humidity_mapping_from_controller(
             continue
         imported_register = imported_humidity.get(idx)
         if imported_register is None:
+            if zone.current_humidity is not None:
+                zone.current_humidity = None
+                changed = True
             continue
 
         current_register = zone.current_humidity

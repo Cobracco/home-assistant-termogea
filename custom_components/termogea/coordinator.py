@@ -71,6 +71,8 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                             zone.current_humidity
                         )
                         raw_values["current_humidity"] = humidity_raw
+                        if humidity_value is not None and not (0.0 < humidity_value <= 100.0):
+                            humidity_value = None
                     except TermogeaApiError as err:
                         _LOGGER.warning(
                             "Zone %s humidity read failed: %s",

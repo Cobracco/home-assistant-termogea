@@ -728,6 +728,9 @@ class TermogeaClient:
             tset_name = self._strip_quotes(section.get("THC_TSET_REG_NAME", ""))
             onoff_name = self._strip_quotes(section.get("THC_ONOFF_REG_NAME", ""))
             status_name = self._strip_quotes(section.get("THC_OUT_THERMOSTAT_REG_NAME", ""))
+            humidity_enabled = str(
+                section.get("THC_MOD_HUMIDISTAT_ENABLED", "false")
+            ).strip().lower() in {"1", "true", "yes", "on"}
             hnow_name = self._first_non_empty_option(
                 section,
                 (
@@ -751,35 +754,37 @@ class TermogeaClient:
                     register_catalog,
                     self._temperature_name_candidates_from_zone_index(idx),
                 )
-            humidity_def = (
-                self._find_register_by_names(register_catalog, [hnow_name]) if hnow_name else None
-            )
-            if humidity_def is None:
-                humidity_def = self._find_humidity_register_by_section_mod_reg(
-                    section,
-                    register_catalog,
+            humidity_def = None
+            if humidity_enabled or hnow_name:
+                humidity_def = (
+                    self._find_register_by_names(register_catalog, [hnow_name]) if hnow_name else None
                 )
-            if humidity_def is None and tnow_name:
-                humidity_def = self._find_register_by_names(
-                    register_catalog,
-                    self._humidity_name_candidates_from_temperature_name(tnow_name, idx),
-                )
-            if humidity_def is None and disp_tnow_name:
-                humidity_def = self._find_register_by_names(
-                    register_catalog,
-                    self._humidity_name_candidates_from_temperature_name(disp_tnow_name, idx),
-                )
-            if humidity_def is None:
-                humidity_def = self._find_register_by_names(
-                    register_catalog,
-                    self._humidity_name_candidates_from_zone_index(idx),
-                )
-            if humidity_def is None:
-                humidity_def = self._guess_zone_humidity_register(
-                    register_catalog,
-                    idx,
-                    names_by_zone.get(idx, ""),
-                )
+                if humidity_def is None:
+                    humidity_def = self._find_humidity_register_by_section_mod_reg(
+                        section,
+                        register_catalog,
+                    )
+                if humidity_def is None and tnow_name:
+                    humidity_def = self._find_register_by_names(
+                        register_catalog,
+                        self._humidity_name_candidates_from_temperature_name(tnow_name, idx),
+                    )
+                if humidity_def is None and disp_tnow_name:
+                    humidity_def = self._find_register_by_names(
+                        register_catalog,
+                        self._humidity_name_candidates_from_temperature_name(disp_tnow_name, idx),
+                    )
+                if humidity_def is None:
+                    humidity_def = self._find_register_by_names(
+                        register_catalog,
+                        self._humidity_name_candidates_from_zone_index(idx),
+                    )
+                if humidity_def is None:
+                    humidity_def = self._guess_zone_humidity_register(
+                        register_catalog,
+                        idx,
+                        names_by_zone.get(idx, ""),
+                    )
             target_tuple = (
                 self._find_register_entry_by_names(register_catalog, [tset_name]) if tset_name else None
             )
