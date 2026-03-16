@@ -9,11 +9,12 @@ from ipaddress import ip_address
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .api import TermogeaApiError, TermogeaAuthError, TermogeaClient
 from .const import (
@@ -44,6 +45,7 @@ from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
 
 _LOGGER = logging.getLogger(__name__)
+ENTRY_POLICY_LISTENER_UNSUB = "policy_listener_unsub"
 
 
 def _zone_identifiers(entry_id: str, zone_id: str) -> tuple[str, ...]:
@@ -829,6 +831,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DATA_STORAGE: storage,
     }
 
+    tracked_policy_entities = sorted(
+        {
+            entity_id
+            for zone in storage.config.zones
+            for entity_id in [*zone.people, zone.presence_sensor]
+            if entity_id
+        }
+    )
+
+    if tracked_policy_entities:
+
+        @callback
+        def _async_handle_policy_relevant_state(_event) -> None:
+            if hass.services.has_service(DOMAIN, SERVICE_APPLY_ALL_ZONE_POLICIES):
+                hass.async_create_task(
+                    hass.services.async_call(
+                        DOMAIN,
+                        SERVICE_APPLY_ALL_ZONE_POLICIES,
+                        {},
+                        blocking=False,
+                    )
+                )
+
+        hass.data[DOMAIN][entry.entry_id][ENTRY_POLICY_LISTENER_UNSUB] = (
+            async_track_state_change_event(
+                hass,
+                tracked_policy_entities,
+                _async_handle_policy_relevant_state,
+            )
+        )
+        _LOGGER.debug(
+            "Registered Termogea policy state listener for %s tracked entities",
+            len(tracked_policy_entities),
+        )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _sync_zone_device_names(hass, entry, storage.config.zones)
     _sync_controller_device_name(hass, entry)
@@ -840,5 +877,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
+        unsub = entry_data.get(ENTRY_POLICY_LISTENER_UNSUB)
+        if unsub:
+            unsub()
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
