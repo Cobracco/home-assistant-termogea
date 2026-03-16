@@ -622,11 +622,13 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         if zone.target_temperature is None:
             return
 
-        if decision.zone_enabled and decision.effective_target is not None:
+        if decision.effective_target is not None:
             await client.async_write_scaled_register(
                 zone.target_temperature,
                 decision.effective_target,
             )
+
+        if decision.zone_enabled:
             if zone.hvac_mode and zone.hvac_mode.heat_value is not None:
                 await client.async_write_register_value(
                     zone.hvac_mode,
@@ -637,11 +639,6 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
                 await client.async_write_register_value(
                     zone.hvac_mode,
                     zone.hvac_mode.off_value,
-                )
-            elif decision.effective_target is not None:
-                await client.async_write_scaled_register(
-                    zone.target_temperature,
-                    decision.effective_target,
                 )
 
         await coordinator.async_request_refresh()
