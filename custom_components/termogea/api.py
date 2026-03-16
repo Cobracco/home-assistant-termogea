@@ -734,21 +734,27 @@ class TermogeaClient:
             hnow_name = self._first_non_empty_option(
                 section,
                 (
+                    "THC_DISP_HNOW_REG_NAME",
                     "THC_HNOW_REG_NAME",
                     "THC_HUM_NOW_REG_NAME",
                     "THC_RHNOW_REG_NAME",
                     "THC_HUMIDITY_REG_NAME",
-                    "THC_DISP_HNOW_REG_NAME",
                 ),
             )
             if not hnow_name:
                 hnow_name = self._find_humidity_reg_name_in_section(section)
 
+            # Prefer display temperature register when available: in several
+            # controller configs THC_TNOW_REG_NAME points to MB Control raw
+            # values (often scaled/mapped differently), while DISP register is
+            # the per-zone canonical measured temperature.
             current_def = (
-                self._find_register_by_names(register_catalog, [tnow_name]) if tnow_name else None
+                self._find_register_by_names(register_catalog, [disp_tnow_name])
+                if disp_tnow_name
+                else None
             )
-            if current_def is None and disp_tnow_name:
-                current_def = self._find_register_by_names(register_catalog, [disp_tnow_name])
+            if current_def is None and tnow_name:
+                current_def = self._find_register_by_names(register_catalog, [tnow_name])
             if current_def is None:
                 current_def = self._find_register_by_names(
                     register_catalog,

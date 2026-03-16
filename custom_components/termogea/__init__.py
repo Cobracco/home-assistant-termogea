@@ -394,6 +394,12 @@ async def _repair_zone_temperature_mapping_from_controller(
             continue
 
         if _same_mod_reg(current_register, imported_register):
+            if (
+                current_register.scale != imported_register.scale
+                or current_register.precision != imported_register.precision
+            ):
+                zone.current_temperature = imported_register
+                changed = True
             continue
 
         current_ok = await _is_temperature_register_readable(client, current_register)
@@ -450,6 +456,12 @@ async def _repair_zone_humidity_mapping_from_controller(
             continue
 
         if _same_mod_reg(current_register, imported_register):
+            if (
+                current_register.scale != imported_register.scale
+                or current_register.precision != imported_register.precision
+            ):
+                zone.current_humidity = imported_register
+                changed = True
             continue
 
         current_ok = await _is_humidity_register_readable(client, current_register)
