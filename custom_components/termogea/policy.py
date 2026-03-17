@@ -257,6 +257,18 @@ def evaluate_zone_policy(
             active_mode=active_mode,
         )
 
+    # Local presence has operational priority: if a zone is eligible and its
+    # room sensor is active, force comfort target regardless of eco/night mode.
+    if presence_detected:
+        return PolicyDecision(
+            assigned_people_present=assigned_people_present,
+            presence_detected=presence_detected,
+            zone_enabled=True,
+            policy_reason="presence_comfort",
+            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_COMFORT),
+            active_mode=active_mode,
+        )
+
     if active_mode == GLOBAL_MODE_COMFORT:
         return PolicyDecision(
             assigned_people_present=assigned_people_present,
@@ -284,16 +296,6 @@ def evaluate_zone_policy(
             zone_enabled=True,
             policy_reason="global_eco",
             effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
-            active_mode=active_mode,
-        )
-
-    if presence_detected:
-        return PolicyDecision(
-            assigned_people_present=assigned_people_present,
-            presence_detected=presence_detected,
-            zone_enabled=True,
-            policy_reason="presence_comfort",
-            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_COMFORT),
             active_mode=active_mode,
         )
 
