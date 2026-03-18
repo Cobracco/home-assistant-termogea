@@ -291,36 +291,22 @@ def evaluate_zone_policy(
             active_mode=active_mode,
         )
 
-    if active_mode == GLOBAL_MODE_COMFORT:
-        return PolicyDecision(
-            assigned_people_present=assigned_people_present,
-            presence_detected=presence_detected,
-            zone_enabled=True,
-            policy_reason="global_comfort",
-            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_COMFORT),
-            active_mode=active_mode,
-        )
+    # Expected behavior:
+    # - at least one assigned person in home => zone in ECO
+    # - local presence active => zone in COMFORT
+    # Global schedule/mode keeps being exposed as metadata, but does not
+    # downgrade eligible occupied zones to night/away temperatures.
+    return PolicyDecision(
+        assigned_people_present=assigned_people_present,
+        presence_detected=presence_detected,
+        zone_enabled=True,
+        policy_reason="assigned_people_eco",
+        effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
+        active_mode=active_mode,
+    )
 
-    if active_mode == GLOBAL_MODE_NIGHT:
-        return PolicyDecision(
-            assigned_people_present=assigned_people_present,
-            presence_detected=presence_detected,
-            zone_enabled=True,
-            policy_reason="global_night",
-            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_NIGHT),
-            active_mode=active_mode,
-        )
-
-    if active_mode == GLOBAL_MODE_ECO:
-        return PolicyDecision(
-            assigned_people_present=assigned_people_present,
-            presence_detected=presence_detected,
-            zone_enabled=True,
-            policy_reason="global_eco",
-            effective_target=_seasonal_zone_target(zone, settings, active_season, GLOBAL_MODE_ECO),
-            active_mode=active_mode,
-        )
-
+    # Fallback kept for backward compatibility, currently unreachable because
+    # all eligible zones are resolved above.
     return PolicyDecision(
         assigned_people_present=assigned_people_present,
         presence_detected=presence_detected,
