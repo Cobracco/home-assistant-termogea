@@ -43,6 +43,12 @@
           "add_schedule_summer": "Aggiungi fascia estate",
           "edit_schedule_select_summer": "Modifica fascia estate",
           "delete_schedule_select_summer": "Elimina fascia estate",
+          "add_zone_schedule_winter": "Aggiungi fascia inverno per zona",
+          "edit_zone_schedule_select_winter": "Modifica fascia inverno per zona",
+          "delete_zone_schedule_select_winter": "Elimina fascia inverno per zona",
+          "add_zone_schedule_summer": "Aggiungi fascia estate per zona",
+          "edit_zone_schedule_select_summer": "Modifica fascia estate per zona",
+          "delete_zone_schedule_select_summer": "Elimina fascia estate per zona",
           "import_legacy_yaml": "Importa YAML legacy"
         }
       },
@@ -92,6 +98,8 @@
           "enabled": "Abilitata",
           "manual_override_allowed": "Override manuale consentito",
           "custom_setpoints": "Usa temperature zona personalizzate",
+          "custom_schedule": "Usa fasce orarie zona personalizzate",
+          "schedule_enabled": "Fasce orarie zona abilitate",
           "is_common_area": "Zona comune",
           "people": "Persone assegnate",
           "presence_sensor": "Sensore presenza",
@@ -110,6 +118,8 @@
           "enabled": "Abilitata",
           "manual_override_allowed": "Override manuale consentito",
           "custom_setpoints": "Usa temperature zona personalizzate",
+          "custom_schedule": "Usa fasce orarie zona personalizzate",
+          "schedule_enabled": "Fasce orarie zona abilitate",
           "is_common_area": "Zona comune",
           "people": "Persone assegnate",
           "presence_sensor": "Sensore presenza",
@@ -227,6 +237,68 @@
       "delete_schedule_select_summer": {
         "title": "Seleziona fascia estate da eliminare",
         "data": {
+          "rule_id": "ID fascia"
+        }
+      },
+      "add_zone_schedule_winter": {
+        "title": "Seleziona zona per fascia inverno",
+        "data": {
+          "zone_id": "ID zona"
+        }
+      },
+      "zone_schedule_winter": {
+        "title": "Modifica fascia inverno della zona",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "edit_zone_schedule_select_winter": {
+        "title": "Seleziona zona/fascia inverno da modificare",
+        "data": {
+          "zone_id": "ID zona",
+          "rule_id": "ID fascia"
+        }
+      },
+      "delete_zone_schedule_select_winter": {
+        "title": "Seleziona zona/fascia inverno da eliminare",
+        "data": {
+          "zone_id": "ID zona",
+          "rule_id": "ID fascia"
+        }
+      },
+      "add_zone_schedule_summer": {
+        "title": "Seleziona zona per fascia estate",
+        "data": {
+          "zone_id": "ID zona"
+        }
+      },
+      "zone_schedule_summer": {
+        "title": "Modifica fascia estate della zona",
+        "data": {
+          "rule_id": "ID fascia",
+          "name": "Nome",
+          "days": "Giorni",
+          "start": "Ora inizio",
+          "end": "Ora fine",
+          "mode": "Modalita"
+        }
+      },
+      "edit_zone_schedule_select_summer": {
+        "title": "Seleziona zona/fascia estate da modificare",
+        "data": {
+          "zone_id": "ID zona",
+          "rule_id": "ID fascia"
+        }
+      },
+      "delete_zone_schedule_select_summer": {
+        "title": "Seleziona zona/fascia estate da eliminare",
+        "data": {
+          "zone_id": "ID zona",
           "rule_id": "ID fascia"
         }
       },

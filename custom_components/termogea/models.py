@@ -103,6 +103,11 @@ class ZoneDefinition:
     manual_override_temp: float | None = None
     manual_override_until: str | None = None
     custom_setpoints: bool = False
+    custom_schedule: bool = False
+    schedule_enabled: bool = True
+    schedule_rules: list[ScheduleRule] = field(default_factory=list)
+    schedule_rules_winter: list[ScheduleRule] = field(default_factory=list)
+    schedule_rules_summer: list[ScheduleRule] = field(default_factory=list)
     comfort_temp: float = 21.0
     eco_temp: float = 18.5
     away_temp: float = 16.0
@@ -150,6 +155,11 @@ class ZoneDefinition:
             "manual_override_temp": self.manual_override_temp,
             "manual_override_until": self.manual_override_until,
             "custom_setpoints": self.custom_setpoints,
+            "custom_schedule": self.custom_schedule,
+            "schedule_enabled": self.schedule_enabled,
+            "schedule_rules": [rule.as_dict() for rule in self.schedule_rules],
+            "schedule_rules_winter": [rule.as_dict() for rule in self.schedule_rules_winter],
+            "schedule_rules_summer": [rule.as_dict() for rule in self.schedule_rules_summer],
             "comfort_temp": self.comfort_temp,
             "eco_temp": self.eco_temp,
             "away_temp": self.away_temp,

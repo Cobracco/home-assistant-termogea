@@ -43,6 +43,12 @@
           "add_schedule_summer": "Add summer schedule",
           "edit_schedule_select_summer": "Edit summer schedule",
           "delete_schedule_select_summer": "Delete summer schedule",
+          "add_zone_schedule_winter": "Add winter schedule for zone",
+          "edit_zone_schedule_select_winter": "Edit winter schedule for zone",
+          "delete_zone_schedule_select_winter": "Delete winter schedule for zone",
+          "add_zone_schedule_summer": "Add summer schedule for zone",
+          "edit_zone_schedule_select_summer": "Edit summer schedule for zone",
+          "delete_zone_schedule_select_summer": "Delete summer schedule for zone",
           "import_legacy_yaml": "Import legacy YAML"
         }
       },
@@ -92,6 +98,8 @@
           "enabled": "Enabled",
           "manual_override_allowed": "Manual override allowed",
           "custom_setpoints": "Use custom zone temperatures",
+          "custom_schedule": "Use custom zone schedule",
+          "schedule_enabled": "Zone schedule enabled",
           "is_common_area": "Common area",
           "people": "Assigned people",
           "presence_sensor": "Presence sensor",
@@ -110,6 +118,8 @@
           "enabled": "Enabled",
           "manual_override_allowed": "Manual override allowed",
           "custom_setpoints": "Use custom zone temperatures",
+          "custom_schedule": "Use custom zone schedule",
+          "schedule_enabled": "Zone schedule enabled",
           "is_common_area": "Common area",
           "people": "Assigned people",
           "presence_sensor": "Presence sensor",
@@ -227,6 +237,68 @@
       "delete_schedule_select_summer": {
         "title": "Select summer schedule to delete",
         "data": {
+          "rule_id": "Schedule ID"
+        }
+      },
+      "add_zone_schedule_winter": {
+        "title": "Select zone for winter schedule",
+        "data": {
+          "zone_id": "Zone ID"
+        }
+      },
+      "zone_schedule_winter": {
+        "title": "Edit zone winter schedule",
+        "data": {
+          "rule_id": "Schedule ID",
+          "name": "Name",
+          "days": "Days",
+          "start": "Start time",
+          "end": "End time",
+          "mode": "Mode"
+        }
+      },
+      "edit_zone_schedule_select_winter": {
+        "title": "Select zone/rule winter schedule to edit",
+        "data": {
+          "zone_id": "Zone ID",
+          "rule_id": "Schedule ID"
+        }
+      },
+      "delete_zone_schedule_select_winter": {
+        "title": "Select zone/rule winter schedule to delete",
+        "data": {
+          "zone_id": "Zone ID",
+          "rule_id": "Schedule ID"
+        }
+      },
+      "add_zone_schedule_summer": {
+        "title": "Select zone for summer schedule",
+        "data": {
+          "zone_id": "Zone ID"
+        }
+      },
+      "zone_schedule_summer": {
+        "title": "Edit zone summer schedule",
+        "data": {
+          "rule_id": "Schedule ID",
+          "name": "Name",
+          "days": "Days",
+          "start": "Start time",
+          "end": "End time",
+          "mode": "Mode"
+        }
+      },
+      "edit_zone_schedule_select_summer": {
+        "title": "Select zone/rule summer schedule to edit",
+        "data": {
+          "zone_id": "Zone ID",
+          "rule_id": "Schedule ID"
+        }
+      },
+      "delete_zone_schedule_select_summer": {
+        "title": "Select zone/rule summer schedule to delete",
+        "data": {
+          "zone_id": "Zone ID",
           "rule_id": "Schedule ID"
         }
       },

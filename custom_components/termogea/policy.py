@@ -55,7 +55,7 @@ def resolve_active_season(settings: GlobalConfig) -> str:
     return SEASON_MODE_SUMMER if 4 <= month <= 9 else SEASON_MODE_WINTER
 
 
-def _schedule_rules_for_season(settings: GlobalConfig, season: str):
+def _global_schedule_rules_for_season(settings: GlobalConfig, season: str):
     if season == SEASON_MODE_SUMMER:
         rules = settings.schedule_rules_summer
     else:
@@ -63,6 +63,16 @@ def _schedule_rules_for_season(settings: GlobalConfig, season: str):
     if rules:
         return rules
     return settings.schedule_rules
+
+
+def _zone_schedule_rules_for_season(zone: ZoneDefinition, season: str):
+    if season == SEASON_MODE_SUMMER:
+        rules = zone.schedule_rules_summer
+    else:
+        rules = zone.schedule_rules_winter
+    if rules:
+        return rules
+    return zone.schedule_rules
 
 
 def _season_mode_value(settings: GlobalConfig, season: str, mode: str) -> float:
@@ -135,21 +145,33 @@ def _active_manual_override_target(zone: ZoneDefinition) -> float | None:
     return float(zone.manual_override_temp)
 
 
-def resolve_active_mode(settings: GlobalConfig) -> str:
+def resolve_active_mode(settings: GlobalConfig, zone: ZoneDefinition | None = None) -> str:
     """Resolve the effective active mode including schedule."""
     mode = settings.global_mode.lower()
     if mode != GLOBAL_MODE_AUTO:
         return mode
 
-    if not settings.schedule_enabled:
+    schedule_enabled = settings.schedule_enabled
+    schedule_rules = _global_schedule_rules_for_season(settings, resolve_active_season(settings))
+    if zone is not None and zone.custom_schedule:
+        schedule_enabled = zone.schedule_enabled
+        zone_rules = _zone_schedule_rules_for_season(zone, resolve_active_season(settings))
+        schedule_rules = zone_rules or schedule_rules
+
+    if not schedule_enabled:
         return settings.auto_fallback_mode
 
     now = dt_util.now()
     weekday = now.strftime("%a").lower()[:3]
     current = now.time()
     active_season = resolve_active_season(settings)
+    if zone is not None and zone.custom_schedule:
+        zone_rules = _zone_schedule_rules_for_season(zone, active_season)
+        schedule_rules = zone_rules or _global_schedule_rules_for_season(settings, active_season)
+    else:
+        schedule_rules = _global_schedule_rules_for_season(settings, active_season)
 
-    for rule in _schedule_rules_for_season(settings, active_season):
+    for rule in schedule_rules:
         if weekday not in rule.days:
             continue
         start = _parse_hhmm(rule.start)
@@ -176,7 +198,7 @@ def evaluate_zone_policy(
     presence_detected = bool(zone.presence_sensor and _is_on(hass, zone.presence_sensor))
     house_people_present = _house_people_present(hass, zones)
     active_season = resolve_active_season(settings)
-    active_mode = resolve_active_mode(settings)
+    active_mode = resolve_active_mode(settings, zone)
 
     if not zone.enabled:
         return PolicyDecision(

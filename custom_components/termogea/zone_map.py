@@ -85,6 +85,13 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
     away = float(zone_data.get("away_temp", presets.get("away", 16.0)))
     night = float(zone_data.get("night_temp", presets.get("night", 18.0)))
     inactive = float(zone_data.get("inactive_temp", zone_data.get("off_temp", away)))
+    zone_schedule_rules_legacy = _parse_schedule_rules(zone_data.get("schedule_rules", []))
+    zone_schedule_rules_winter = _parse_schedule_rules(
+        zone_data.get("schedule_rules_winter", zone_data.get("schedule_rules", []))
+    )
+    zone_schedule_rules_summer = _parse_schedule_rules(
+        zone_data.get("schedule_rules_summer", zone_data.get("schedule_rules", []))
+    )
 
     return ZoneDefinition(
         zone_id=zone_id,
@@ -109,6 +116,11 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
             else None
         ),
         custom_setpoints=bool(zone_data.get("custom_setpoints", False)),
+        custom_schedule=bool(zone_data.get("custom_schedule", False)),
+        schedule_enabled=bool(zone_data.get("schedule_enabled", True)),
+        schedule_rules=zone_schedule_rules_legacy,
+        schedule_rules_winter=zone_schedule_rules_winter,
+        schedule_rules_summer=zone_schedule_rules_summer,
         comfort_temp=comfort,
         eco_temp=eco,
         away_temp=away,

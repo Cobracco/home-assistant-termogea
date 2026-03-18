@@ -196,6 +196,14 @@ def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Sch
             "custom_setpoints",
             default=defaults.custom_setpoints,
         ): bool,
+        vol.Required(
+            "custom_schedule",
+            default=defaults.custom_schedule,
+        ): bool,
+        vol.Required(
+            "schedule_enabled",
+            default=defaults.schedule_enabled,
+        ): bool,
         vol.Required("is_common_area", default=defaults.is_common_area): bool,
         vol.Optional("people", default=defaults.people): selector.EntitySelector(
             selector.EntitySelectorConfig(
@@ -348,6 +356,8 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         self._editing_zone_id: str | None = None
         self._editing_schedule_id: str | None = None
         self._editing_schedule_season: str = SEASON_MODE_WINTER
+        self._editing_zone_schedule_zone_id: str | None = None
+        self._editing_zone_schedule_id: str | None = None
 
     async def _async_storage(self) -> TermogeaStorageManager:
         if self._storage is None:
@@ -379,6 +389,12 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 "add_schedule_summer",
                 "edit_schedule_select_summer",
                 "delete_schedule_select_summer",
+                "add_zone_schedule_winter",
+                "edit_zone_schedule_select_winter",
+                "delete_zone_schedule_select_winter",
+                "add_zone_schedule_summer",
+                "edit_zone_schedule_select_summer",
+                "delete_zone_schedule_select_summer",
                 "import_legacy_yaml",
             ],
         )
@@ -517,6 +533,11 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 zone_id="",
                 name="",
                 custom_setpoints=False,
+                custom_schedule=False,
+                schedule_enabled=bool(defaults.schedule_enabled),
+                schedule_rules=list(defaults.schedule_rules),
+                schedule_rules_winter=list(defaults.schedule_rules_winter),
+                schedule_rules_summer=list(defaults.schedule_rules_summer),
                 comfort_temp=float(defaults.comfort_temp),
                 eco_temp=float(defaults.eco_temp),
                 away_temp=float(defaults.away_temp),
@@ -550,12 +571,23 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     manual_override_temp=current_zone.manual_override_temp if current_zone else None,
                     manual_override_until=current_zone.manual_override_until if current_zone else None,
                     custom_setpoints=bool(user_input.get("custom_setpoints", False)),
+                    custom_schedule=bool(user_input.get("custom_schedule", False)),
+                    schedule_enabled=bool(user_input.get("schedule_enabled", True)),
+                    schedule_rules=current_zone.schedule_rules if current_zone else [],
+                    schedule_rules_winter=current_zone.schedule_rules_winter if current_zone else [],
+                    schedule_rules_summer=current_zone.schedule_rules_summer if current_zone else [],
                     comfort_temp=float(user_input["comfort_temp"]),
                     eco_temp=float(user_input["eco_temp"]),
                     away_temp=float(user_input["away_temp"]),
                     night_temp=float(user_input["night_temp"]),
                     inactive_temp=float(user_input["inactive_temp"]),
                 )
+                if updated_zone.custom_schedule and not current_zone.custom_schedule:
+                    global_config = storage.config.global_config
+                    updated_zone.schedule_enabled = bool(global_config.schedule_enabled)
+                    updated_zone.schedule_rules = list(global_config.schedule_rules)
+                    updated_zone.schedule_rules_winter = list(global_config.schedule_rules_winter)
+                    updated_zone.schedule_rules_summer = list(global_config.schedule_rules_summer)
                 if not updated_zone.custom_setpoints:
                     global_config = storage.config.global_config
                     updated_zone.comfort_temp = float(global_config.comfort_temp)
@@ -625,6 +657,11 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 manual_override_temp=current_zone.manual_override_temp,
                 manual_override_until=current_zone.manual_override_until,
                 custom_setpoints=current_zone.custom_setpoints,
+                custom_schedule=current_zone.custom_schedule,
+                schedule_enabled=current_zone.schedule_enabled,
+                schedule_rules=current_zone.schedule_rules,
+                schedule_rules_winter=current_zone.schedule_rules_winter,
+                schedule_rules_summer=current_zone.schedule_rules_summer,
                 comfort_temp=current_zone.comfort_temp,
                 eco_temp=current_zone.eco_temp,
                 away_temp=current_zone.away_temp,
@@ -896,6 +933,319 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
         return await self._async_step_delete_schedule_select_for_season(
             SEASON_MODE_SUMMER,
             "delete_schedule_select_summer",
+            user_input,
+        )
+
+    def _zone_schedule_rules_for_season(self, zone: ZoneDefinition, season: str) -> list[ScheduleRule]:
+        if season == SEASON_MODE_SUMMER:
+            rules = list(zone.schedule_rules_summer)
+        else:
+            rules = list(zone.schedule_rules_winter)
+        return rules if rules else list(zone.schedule_rules)
+
+    def _apply_zone_schedule_rules_for_season(
+        self,
+        zone: ZoneDefinition,
+        season: str,
+        rules: list[ScheduleRule],
+    ) -> None:
+        if season == SEASON_MODE_SUMMER:
+            zone.schedule_rules_summer = rules
+        else:
+            zone.schedule_rules_winter = rules
+        if season == SEASON_MODE_WINTER or not zone.schedule_rules:
+            zone.schedule_rules = list(zone.schedule_rules_winter)
+
+    async def _async_step_zone_schedule_pick_zone(
+        self,
+        season: str,
+        step_id: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        if user_input is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+        storage = await self._async_storage()
+        zones = list(storage.config.zones)
+        if not zones:
+            return await self._async_finish_and_reload()
+        if user_input is not None and user_input.get("zone_id"):
+            self._editing_zone_schedule_zone_id = user_input["zone_id"]
+            self._editing_zone_schedule_id = None
+            if season == SEASON_MODE_SUMMER:
+                return await self.async_step_zone_schedule_summer()
+            return await self.async_step_zone_schedule_winter()
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("zone_id"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_zone_selector_options(zones),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_add_zone_schedule_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_zone_schedule_pick_zone(
+            SEASON_MODE_WINTER,
+            "add_zone_schedule_winter",
+            user_input,
+        )
+
+    async def async_step_add_zone_schedule_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_zone_schedule_pick_zone(
+            SEASON_MODE_SUMMER,
+            "add_zone_schedule_summer",
+            user_input,
+        )
+
+    async def _async_step_edit_zone_schedule_select_for_season(
+        self,
+        season: str,
+        step_id: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        storage = await self._async_storage()
+        zones = list(storage.config.zones)
+        if not zones:
+            return await self._async_finish_and_reload()
+
+        if self._editing_zone_schedule_zone_id is None:
+            if user_input is not None and user_input.get("zone_id"):
+                self._editing_zone_schedule_zone_id = user_input["zone_id"]
+            else:
+                return self.async_show_form(
+                    step_id=step_id,
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required("zone_id"): selector.SelectSelector(
+                                selector.SelectSelectorConfig(
+                                    options=_zone_selector_options(zones),
+                                    mode=selector.SelectSelectorMode.DROPDOWN,
+                                )
+                            )
+                        }
+                    ),
+                )
+
+        zone = storage.get_zone(self._editing_zone_schedule_zone_id)
+        if zone is None:
+            self._editing_zone_schedule_zone_id = None
+            return await self._async_finish_and_reload()
+        rules = self._zone_schedule_rules_for_season(zone, season)
+        if not rules:
+            self._editing_zone_schedule_zone_id = None
+            return await self._async_finish_and_reload()
+
+        if user_input is not None and user_input.get("rule_id"):
+            self._editing_zone_schedule_id = user_input["rule_id"]
+            if season == SEASON_MODE_SUMMER:
+                return await self.async_step_zone_schedule_summer()
+            return await self.async_step_zone_schedule_winter()
+
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("rule_id"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_selector_options([rule.rule_id for rule in rules]),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_edit_zone_schedule_select_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+        return await self._async_step_edit_zone_schedule_select_for_season(
+            SEASON_MODE_WINTER,
+            "edit_zone_schedule_select_winter",
+            user_input,
+        )
+
+    async def async_step_edit_zone_schedule_select_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+        return await self._async_step_edit_zone_schedule_select_for_season(
+            SEASON_MODE_SUMMER,
+            "edit_zone_schedule_select_summer",
+            user_input,
+        )
+
+    async def _async_step_zone_schedule(
+        self,
+        season: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        storage = await self._async_storage()
+        if not self._editing_zone_schedule_zone_id:
+            return await self._async_finish_and_reload()
+        zone = storage.get_zone(self._editing_zone_schedule_zone_id)
+        if zone is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+            return await self._async_finish_and_reload()
+
+        rules = self._zone_schedule_rules_for_season(zone, season)
+        current_rule = None
+        if self._editing_zone_schedule_id:
+            current_rule = next(
+                (
+                    candidate
+                    for candidate in rules
+                    if candidate.rule_id == self._editing_zone_schedule_id
+                ),
+                None,
+            )
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            rule_id = str(user_input["rule_id"]).strip()
+            existing_ids = {candidate.rule_id for candidate in rules}
+            if (
+                rule_id != (current_rule.rule_id if current_rule else None)
+                and rule_id in existing_ids
+            ):
+                errors["base"] = "duplicate_schedule"
+            else:
+                zone.custom_schedule = True
+                zone.schedule_enabled = bool(zone.schedule_enabled)
+                new_rule = ScheduleRule(
+                    rule_id=rule_id,
+                    name=str(user_input["name"]).strip(),
+                    days=list(user_input["days"]),
+                    start=str(user_input["start"]),
+                    end=str(user_input["end"]),
+                    mode=str(user_input["mode"]).lower(),
+                )
+                updated_rules = [
+                    candidate
+                    for candidate in rules
+                    if candidate.rule_id != rule_id
+                    and candidate.rule_id != self._editing_zone_schedule_id
+                ]
+                updated_rules.append(new_rule)
+                self._apply_zone_schedule_rules_for_season(zone, season, updated_rules)
+                await storage.async_upsert_zone(zone)
+                self._editing_zone_schedule_id = None
+                self._editing_zone_schedule_zone_id = None
+                return await self._async_finish_and_reload()
+
+        suffix = self._season_step_suffix(season)
+        return self.async_show_form(
+            step_id=f"zone_schedule_{suffix}",
+            data_schema=_schedule_schema(current_rule),
+            errors=errors,
+        )
+
+    async def async_step_zone_schedule_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_zone_schedule(SEASON_MODE_WINTER, user_input)
+
+    async def async_step_zone_schedule_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_step_zone_schedule(SEASON_MODE_SUMMER, user_input)
+
+    async def _async_step_delete_zone_schedule_select_for_season(
+        self,
+        season: str,
+        step_id: str,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        storage = await self._async_storage()
+        zones = list(storage.config.zones)
+        if not zones:
+            return await self._async_finish_and_reload()
+
+        if self._editing_zone_schedule_zone_id is None:
+            if user_input is not None and user_input.get("zone_id"):
+                self._editing_zone_schedule_zone_id = user_input["zone_id"]
+            else:
+                return self.async_show_form(
+                    step_id=step_id,
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required("zone_id"): selector.SelectSelector(
+                                selector.SelectSelectorConfig(
+                                    options=_zone_selector_options(zones),
+                                    mode=selector.SelectSelectorMode.DROPDOWN,
+                                )
+                            )
+                        }
+                    ),
+                )
+
+        zone = storage.get_zone(self._editing_zone_schedule_zone_id)
+        if zone is None:
+            self._editing_zone_schedule_zone_id = None
+            return await self._async_finish_and_reload()
+        rules = self._zone_schedule_rules_for_season(zone, season)
+        if not rules:
+            self._editing_zone_schedule_zone_id = None
+            return await self._async_finish_and_reload()
+
+        if user_input is not None and user_input.get("rule_id"):
+            updated_rules = [rule for rule in rules if rule.rule_id != user_input["rule_id"]]
+            self._apply_zone_schedule_rules_for_season(zone, season, updated_rules)
+            await storage.async_upsert_zone(zone)
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+            return await self._async_finish_and_reload()
+
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("rule_id"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_selector_options([rule.rule_id for rule in rules]),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_delete_zone_schedule_select_winter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+        return await self._async_step_delete_zone_schedule_select_for_season(
+            SEASON_MODE_WINTER,
+            "delete_zone_schedule_select_winter",
+            user_input,
+        )
+
+    async def async_step_delete_zone_schedule_select_summer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is None:
+            self._editing_zone_schedule_zone_id = None
+            self._editing_zone_schedule_id = None
+        return await self._async_step_delete_zone_schedule_select_for_season(
+            SEASON_MODE_SUMMER,
+            "delete_zone_schedule_select_summer",
             user_input,
         )
 
