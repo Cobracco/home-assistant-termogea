@@ -379,6 +379,7 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             menu_options=[
                 "connection",
                 "global_settings",
+                "season_settings",
                 "add_zone",
                 "edit_zone_select",
                 "edit_zone_mapping_select",
@@ -491,6 +492,29 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
             step_id="global_settings",
             data_schema=_global_schema(storage.config.global_config),
         )
+
+    async def async_step_season_settings(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        from dataclasses import replace as dataclass_replace
+
+        storage = await self._async_storage()
+        if user_input is not None:
+            current = storage.config.global_config
+            updated = dataclass_replace(current, season_mode=str(user_input["season_mode"]).lower())
+            await storage.async_update_global_config(updated, previous_global_config=current)
+            return await self._async_finish_and_reload()
+
+        current_mode = storage.config.global_config.season_mode
+        schema = vol.Schema(
+            {
+                vol.Required("season_mode", default=current_mode): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=_selector_options(SEASON_MODES),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(step_id="season_settings", data_schema=schema)
 
     async def async_step_add_zone(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         return await self._async_step_zone_policy(user_input, zone=None)

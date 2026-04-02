@@ -54,12 +54,25 @@ La configurazione primaria avviene dalla UI dell'integrazione:
 
 - connessione controller
 - parametri globali
+- **gestione stagione** (cambio rapido tra `auto`, `inverno`, `estate`)
 - fasce orarie
 - zone
 - persone assegnate
 - sensori presenza
 - preset zona
 - mapping tecnico registri
+
+### Gestione stagione
+
+Dalla voce **"Gestione stagione"** nel menu principale delle opzioni e possibile impostare la modalita stagionale senza modificare gli altri parametri globali:
+
+| Valore | Comportamento |
+|--------|---------------|
+| `auto` | Determina la stagione dal mese corrente (aprile–settembre = estate, ottobre–marzo = inverno) |
+| `winter` | Forza la modalita inverno indipendentemente dal mese |
+| `summer` | Forza la modalita estate indipendentemente dal mese |
+
+La stagione attiva e visibile tramite il sensore `sensor.termogea_active_season`.
 
 ## Import legacy
 

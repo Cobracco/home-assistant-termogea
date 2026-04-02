@@ -49,6 +49,7 @@
           "add_zone_schedule_summer": "Aggiungi fascia estate per zona",
           "edit_zone_schedule_select_summer": "Modifica fascia estate per zona",
           "delete_zone_schedule_select_summer": "Elimina fascia estate per zona",
+          "season_settings": "Gestione stagione",
           "import_legacy_yaml": "Importa YAML legacy"
         }
       },
@@ -88,6 +89,12 @@
           "summer_away_temp": "Estate away",
           "summer_night_temp": "Estate night",
           "summer_inactive_temp": "Estate inattiva/off"
+        }
+      },
+      "season_settings": {
+        "title": "Gestione stagione",
+        "data": {
+          "season_mode": "Stagione attiva"
         }
       },
       "add_zone": {
