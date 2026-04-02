@@ -10,6 +10,23 @@ views:
           Griglia zone in stile app Termogea.  
           `Tap`: dettaglio zona • `Hold`: On/Off rapido
 
+      - type: entities
+        title: Controllo impianto
+        show_header_toggle: false
+        entities:
+          - entity: switch.termogea_power
+            name: Impianto
+            icon: mdi:power
+          - entity: select.termogea_season_mode
+            name: Stagione
+            icon: mdi:weather-partly-cloudy
+          - entity: sensor.termogea_active_season
+            name: Stagione attiva
+            icon: mdi:leaf
+          - entity: sensor.termogea_active_mode
+            name: Modalita attiva
+            icon: mdi:cog
+
       - type: custom:auto-entities
         show_empty: false
         unique: true
