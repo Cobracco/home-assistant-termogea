@@ -683,40 +683,6 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             if imported:
                 await hass.config_entries.async_reload(entry_id)
 
-    async def _sync_zone_season_register(
-        client: TermogeaClient,
-        zone: ZoneDefinition,
-        cooling: bool,
-    ) -> None:
-        """Allinea il registro stagione per-zona alla stagione operativa.
-
-        Scrive summer_value/winter_value solo se diverso dal valore letto, per
-        non floodare la centralina. Il registro globale Season (10/99) NON viene
-        mai scritto: e' sola lettura.
-        """
-        season_register = zone.season_register
-        if season_register is None:
-            return
-        desired = (
-            season_register.summer_value
-            if cooling
-            else season_register.winter_value
-        )
-        if desired is None:
-            return
-        try:
-            current_raw, _value = await client.async_read_register(season_register)
-        except TermogeaApiError as err:
-            _LOGGER.warning(
-                "Zone %s season register read failed, skipping season write: %s",
-                zone.zone_id,
-                err,
-            )
-            return
-        if current_raw == desired:
-            return
-        await client.async_write_register_value(season_register, desired)
-
     async def _apply_policy(zone: ZoneDefinition, entry_data: dict) -> None:
         coordinator: TermogeaDataUpdateCoordinator = entry_data[DATA_COORDINATOR]
         client: TermogeaClient = entry_data[DATA_CLIENT]
@@ -745,15 +711,12 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         # non controllati). La decision ha gia' reason 'cooling_not_supported'.
         cooling_not_supported = cooling and not zone.supports_cooling
 
-        # HA comanda la stagione: allinea il registro per-zona (se scrivibile e
-        # solo se diverso dal letto). Fail-safe se il registro non e' mappato.
-        # Le zone senza raffrescamento non vanno MAI commutate in stagione
-        # estiva/raffrescamento (rischio condensa su radianti a pavimento):
-        # in estate le si mantiene sul valore invernale (cooling=False).
-        await _sync_zone_season_register(
-            client, zone, cooling and not cooling_not_supported
-        )
-
+        # Stagione in SOLA LETTURA: HA NON scrive mai i registri stagione della
+        # centralina (ne' globale ne' per-zona). La stagione operativa viene letta
+        # dal registro globale e usata solo per adattare la logica HA (direzione
+        # della domanda, setpoint estivi/invernali, dew point). In questo modo HA
+        # non puo' commutare l'impianto estate/inverno. Le zone senza raffrescamento
+        # in estate si gestiscono solo con OnOff off (cooling_not_supported).
         if zone.target_temperature is None:
             return
 
