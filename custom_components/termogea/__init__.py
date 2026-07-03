@@ -720,7 +720,13 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         if zone.target_temperature is None:
             return
 
-        if not cooling_not_supported and decision.effective_target is not None:
+        # Il setpoint viene SEMPRE allineato all'effective_target della policy,
+        # anche per le zone senza raffrescamento in estate (cooling_not_supported):
+        # in quel caso effective_target e' il valore estivo neutro/di riposo (alto),
+        # non un comando di freddo. Aggiornarlo comunque evita che sul registro
+        # resti un setpoint invernale residuo (target "confusi" estate/inverno).
+        # La protezione anti-raffrescamento e' garantita dall'OnOff off qui sotto.
+        if decision.effective_target is not None:
             await client.async_write_scaled_register(
                 zone.target_temperature,
                 decision.effective_target,
