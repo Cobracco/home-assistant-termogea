@@ -10,25 +10,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import TermogeaApiError, TermogeaClient
 from .const import (
-    GLOBAL_SEASON_REGISTER_MOD,
-    GLOBAL_SEASON_REGISTER_REG,
-    GLOBAL_SEASON_VALUE_SUMMER,
     SEASON_SUMMER,
     SEASON_WINTER,
 )
-from .models import RegisterDefinition, ZoneDefinition, ZoneSnapshot
+from .models import ZoneDefinition, ZoneSnapshot
 from .policy import compute_dew_point
 
 _LOGGER = logging.getLogger(__name__)
-
-# Registro globale Season (sola lettura) cablato: mod=10, reg=99, scale 1.
-# La centralina espone qui la stagione operativa (0=inverno, 1=estate).
-_GLOBAL_SEASON_REGISTER = RegisterDefinition(
-    mod=GLOBAL_SEASON_REGISTER_MOD,
-    reg=GLOBAL_SEASON_REGISTER_REG,
-    scale=1.0,
-    precision=0,
-)
 
 
 class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot]]):
@@ -49,28 +37,51 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
         )
         self.client = client
         self.zones = zones
-        # Stagione operativa osservata dal registro globale della centralina
-        # ("winter"/"summer"). None finche' non e' stata letta almeno una volta.
+        # Stagione operativa osservata dai registri season per-zona (caldo/freddo).
+        # None finche' non e' stata letta almeno una volta.
         self.observed_season: str | None = None
 
     async def _async_read_observed_season(self) -> None:
-        """Read the global Season register and cache the observed season.
+        """Determina la stagione osservata dai registri ZoneN season affidabili.
 
-        Fail-safe: in caso di errore di lettura si mantiene l'ultimo valore noto
-        (o None), senza far fallire l'intero ciclo di aggiornamento.
+        Il registro globale 10/99 e' un "Dummy" di scratch che la centralina
+        riscrive di continuo (valore instabile 0/1): NON e' un indicatore di
+        stagione affidabile. Si leggono invece i registri season per-zona
+        (base+6) delle zone che supportano il raffrescamento -- le uniche
+        coerenti caldo/freddo -- e si prende la maggioranza.
+        Fail-safe: su errore o assenza di dati affidabili si mantiene l'ultimo
+        valore noto, senza far fallire il ciclo di aggiornamento.
         """
-        try:
-            raw, _value = await self.client.async_read_register(_GLOBAL_SEASON_REGISTER)
-        except TermogeaApiError as err:
-            _LOGGER.warning(
-                "Termogea global Season register read failed, keeping previous value: %s",
-                err,
-            )
-            return
-        if raw is None:
+        summer_votes = 0
+        winter_votes = 0
+        for zone in self.zones:
+            if not zone.supports_cooling:
+                continue
+            register = zone.season_register
+            if (
+                register is None
+                or register.summer_value is None
+                or register.winter_value is None
+            ):
+                continue
+            try:
+                raw, _value = await self.client.async_read_register(register)
+            except TermogeaApiError as err:
+                _LOGGER.warning(
+                    "Zone %s season register read failed: %s", zone.zone_id, err
+                )
+                continue
+            if raw is None:
+                continue
+            if raw == register.summer_value:
+                summer_votes += 1
+            elif raw == register.winter_value:
+                winter_votes += 1
+        if summer_votes == 0 and winter_votes == 0:
+            # Nessun dato affidabile: mantieni l'ultimo valore noto.
             return
         self.observed_season = (
-            SEASON_SUMMER if raw == GLOBAL_SEASON_VALUE_SUMMER else SEASON_WINTER
+            SEASON_SUMMER if summer_votes >= winter_votes else SEASON_WINTER
         )
 
     async def _async_update_data(self) -> dict[str, ZoneSnapshot]:
