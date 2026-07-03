@@ -484,7 +484,11 @@ def is_zone_conditioning_active(
     if snapshot.hvac_mode == "off":
         return False
 
-    if snapshot.status_value is not None:
+    # Lo StatusBits (bit0) della centralina rappresenta la richiesta di
+    # RISCALDAMENTO della zona e resta 0 in raffrescamento: usarlo solo in
+    # riscaldamento. In estate (cooling) la domanda si deduce dal confronto
+    # temperatura corrente/target piu' sotto (current > target + delta).
+    if not cooling and snapshot.status_value is not None:
         # Server-provided StatusBits: bit0 represents active zone request.
         return bool(snapshot.status_value & 0x0001)
 
