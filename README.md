@@ -26,6 +26,11 @@ Custom integration Home Assistant per controllare e configurare impianti **Termo
   - inactive/off
 - fasce orarie settimanali persistenti
 - configurazioni stagionali separate (estate/inverno) per setpoint globali e fasce orarie
+- **raffrescamento estivo**: modalita `climate` heat/cool dinamica per zona in base alla stagione
+- direzione della domanda invertita in estate (la zona chiede freddo quando la temperatura supera il setpoint)
+- zone senza raffrescamento (radianti non controllati) messe automaticamente a riposo in estate
+- **protezione anticondensa**: setpoint mantenuto sopra il punto di rugiada (dew point) calcolato da temperatura e umidita di zona
+- sensore `dew point` per zona
 - sensori di policy per debug e dashboard
 - switch globale `Termogea Power` per accendere/spegnere tutto
 - supporto umidita zona (se registro disponibile)
@@ -68,11 +73,23 @@ Dalla voce **"Gestione stagione"** nel menu principale delle opzioni e possibile
 
 | Valore | Comportamento |
 |--------|---------------|
-| `auto` | Determina la stagione dal mese corrente (aprile–settembre = estate, ottobre–marzo = inverno) |
-| `winter` | Forza la modalita inverno indipendentemente dal mese |
-| `summer` | Forza la modalita estate indipendentemente dal mese |
+| `auto` | Legge la stagione reale dalla centralina (registri di zona affidabili); fallback al mese corrente se non disponibile |
+| `winter` | Forza la modalita inverno indipendentemente dalla centralina |
+| `summer` | Forza la modalita estate indipendentemente dalla centralina |
 
 La stagione attiva e visibile tramite il sensore `sensor.termogea_active_season`.
+
+### Raffrescamento estivo
+
+Quando la stagione attiva e `summer`, l'integrazione adatta automaticamente la logica di controllo:
+
+- le entita `climate` espongono la modalita `cool` (invece di `heat`) con la relativa `hvac_action`;
+- la **direzione della domanda e invertita**: la zona chiede condizionamento quando la temperatura supera il setpoint (in inverno: quando scende sotto);
+- i **setpoint estivi** hanno semantica di raffrescamento (comfort = piu fresco, riposo = piu alto) e sono separati da quelli invernali;
+- le **zone senza raffrescamento** (radianti non controllati, `supports_cooling = false`) vengono messe a riposo (OnOff off) e allineate al setpoint estivo neutro, senza mai ricevere un comando di freddo;
+- e attiva la **protezione anticondensa**: il setpoint effettivo non scende mai sotto il punto di rugiada (dew point, formula di Magnus) piu un margine configurabile, per evitare condensa sui pannelli radianti. Il dew point per zona e esposto come sensore dedicato.
+
+La commutazione stagione dell'impianto resta gestita dalla centralina Termogea: l'integrazione **legge** la stagione e vi si adatta, senza forzarla via Modbus.
 
 ## Import legacy
 
@@ -123,8 +140,11 @@ entities:
 
 ## Problemi Risolti
 
-Risolti nelle ultime iterazioni (fino a `0.1.11`):
+Risolti nelle ultime iterazioni:
 
+- raffrescamento estivo con modalita `climate` cool/heat dinamica, direzione domanda invertita e protezione anticondensa (dew point)
+- stagione letta dai registri di zona affidabili in modalita `auto` (evita lo sfarfallio del registro globale non stabile)
+- allineamento del setpoint alla stagione anche per le zone a riposo (elimina i target invernali residui in estate)
 - errore `AttributeError: property 'config_entry' ... has no setter` nel flow opzioni
 - migrazione connessione per evitare `KeyError: 'host'` in setup entry
 - fallback host quando entry corrotta puntava al titolo (es. `pierini`) invece dell'IP
