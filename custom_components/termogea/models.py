@@ -19,6 +19,11 @@ class RegisterDefinition:
     step: float | None = None
     off_value: int | None = None
     heat_value: int | None = None
+    # Valori raw per il registro stagione per-zona (season register).
+    # winter_value/summer_value sono i raw da scrivere per selezionare la
+    # stagione (es. WINTER=0 / SUMMER=10 sulla centralina reale).
+    winter_value: int | None = None
+    summer_value: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialize the register definition."""
@@ -61,11 +66,18 @@ class GlobalConfig:
     winter_away_temp: float = 16.0
     winter_night_temp: float = 18.0
     winter_inactive_temp: float = 16.0
-    summer_comfort_temp: float = 21.0
-    summer_eco_temp: float = 18.5
-    summer_away_temp: float = 16.0
-    summer_night_temp: float = 18.0
-    summer_inactive_temp: float = 16.0
+    # Default estivi con semantica raffrescamento (freddo): comfort = piu' freddo,
+    # inactive = piu' caldo (zona a riposo). Coerenti con la direzione della domanda
+    # in estate (temp > target).
+    summer_comfort_temp: float = 25.0
+    summer_eco_temp: float = 27.0
+    summer_away_temp: float = 29.0
+    summer_night_temp: float = 26.0
+    summer_inactive_temp: float = 30.0
+    # Protezione anticondensa in raffrescamento: in estate il setpoint effettivo
+    # non scende sotto dew_point + dewpoint_margin.
+    dewpoint_protection_enabled: bool = True
+    dewpoint_margin: float = 1.5
     schedule_enabled: bool = True
     schedule_rules: list[ScheduleRule] = field(default_factory=list)
     schedule_rules_winter: list[ScheduleRule] = field(default_factory=list)
@@ -95,6 +107,11 @@ class ZoneDefinition:
     target_temperature: RegisterDefinition | None = None
     hvac_mode: RegisterDefinition | None = None
     status_register: RegisterDefinition | None = None
+    # Registro stagione per-zona (RW): HA scrive winter_value/summer_value per
+    # comandare la stagione della zona. None se la zona non lo espone.
+    season_register: RegisterDefinition | None = None
+    # Registro setpoint umidita' per-zona (RW), usato per la deumidificazione.
+    humidity_setpoint: RegisterDefinition | None = None
     people: list[str] = field(default_factory=list)
     presence_sensor: str | None = None
     is_common_area: bool = False
@@ -113,6 +130,16 @@ class ZoneDefinition:
     away_temp: float = 16.0
     night_temp: float = 18.0
     inactive_temp: float = 16.0
+    # Capacita' della zona (da .thermoregulation.json della centralina).
+    # supports_cooling=False -> in estate la zona va a riposo (nessun raffrescamento).
+    supports_cooling: bool = True
+    supports_dehumidification: bool = False
+    # Setpoint estivi per-zona con semantica raffrescamento (freddo).
+    summer_comfort_temp: float = 25.0
+    summer_eco_temp: float = 27.0
+    summer_away_temp: float = 29.0
+    summer_night_temp: float = 26.0
+    summer_inactive_temp: float = 30.0
 
     @property
     def mapping_complete(self) -> bool:
@@ -147,6 +174,16 @@ class ZoneDefinition:
                 if self.status_register is not None
                 else None
             ),
+            "season_register": (
+                self.season_register.as_dict()
+                if self.season_register is not None
+                else None
+            ),
+            "humidity_setpoint": (
+                self.humidity_setpoint.as_dict()
+                if self.humidity_setpoint is not None
+                else None
+            ),
             "people": list(self.people),
             "presence_sensor": self.presence_sensor,
             "is_common_area": self.is_common_area,
@@ -165,6 +202,13 @@ class ZoneDefinition:
             "away_temp": self.away_temp,
             "night_temp": self.night_temp,
             "inactive_temp": self.inactive_temp,
+            "supports_cooling": self.supports_cooling,
+            "supports_dehumidification": self.supports_dehumidification,
+            "summer_comfort_temp": self.summer_comfort_temp,
+            "summer_eco_temp": self.summer_eco_temp,
+            "summer_away_temp": self.summer_away_temp,
+            "summer_night_temp": self.summer_night_temp,
+            "summer_inactive_temp": self.summer_inactive_temp,
         }
 
 
@@ -186,6 +230,10 @@ class ZoneSnapshot:
     hvac_mode: str | None
     status_value: int | None = None
     raw_values: dict[str, int | None] = field(default_factory=dict)
+    # Stagione operativa osservata per la zona ("winter"/"summer"), se nota.
+    season: str | None = None
+    # Punto di rugiada calcolato (°C) da temperatura + umidita', se disponibili.
+    dew_point: float | None = None
 
 
 @dataclass(slots=True)

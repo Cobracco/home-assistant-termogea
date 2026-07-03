@@ -16,6 +16,11 @@ from urllib.parse import quote
 
 from aiohttp import ClientError, ClientSession
 
+from .const import (
+    DEFAULT_DEWPOINT_MARGIN,
+    ZONE_SEASON_VALUE_SUMMER,
+    ZONE_SEASON_VALUE_WINTER,
+)
 from .models import GlobalConfig, RegisterDefinition, ScheduleRule, ZoneDefinition
 
 
@@ -560,6 +565,44 @@ class TermogeaClient:
         return parser
 
     @staticmethod
+    def _parse_zone_capabilities(raw_text: str | None) -> dict[int, dict[str, bool]]:
+        """Estrai capacita' per zona da .thermoregulation.json.
+
+        Ritorna {zone_index: {"supports_cooling": bool,
+        "supports_dehumidification": bool}}. Se il file manca o non e'
+        parsabile ritorna un dizionario vuoto (retrocompat: le zone restano
+        supports_cooling=True di default).
+        """
+        capabilities: dict[int, dict[str, bool]] = {}
+        if not raw_text:
+            return capabilities
+        try:
+            payload = json.loads(raw_text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return capabilities
+        if not isinstance(payload, dict):
+            return capabilities
+
+        for key, value in payload.items():
+            if not isinstance(value, dict):
+                continue
+            match = re.search(r"(\d+)", str(key))
+            if not match:
+                continue
+            zone_index = int(match.group(1))
+            cooling_raw = str(value.get("raffrescamento", "")).strip().upper()
+            dehum_raw = str(value.get("deumidificazione", "")).strip().upper()
+            # Raffrescamento controllato se diverso da "NON CONTROLLATO".
+            supports_cooling = bool(cooling_raw) and cooling_raw != "NON CONTROLLATO"
+            # Deumidificazione se il descrittore contiene "DEUMIDIFICATORE".
+            supports_dehumidification = "DEUMIDIFICATORE" in dehum_raw
+            capabilities[zone_index] = {
+                "supports_cooling": supports_cooling,
+                "supports_dehumidification": supports_dehumidification,
+            }
+        return capabilities
+
+    @staticmethod
     def _parse_reg_list(raw_text: str) -> dict[str, tuple[RegisterDefinition, str]]:
         catalog: dict[str, tuple[RegisterDefinition, str]] = {}
         lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
@@ -660,6 +703,11 @@ class TermogeaClient:
         reg_list_raw = _read_member("reg_list.txt")
         conf_raw = _read_member("telegea.conf")
         custom_raw = _read_member("telegea_thcontrol_custom.conf")
+        # Capacita' per zona (raffrescamento/deumidificazione). File opzionale:
+        # se assente si assume la retrocompat (supports_cooling=True).
+        thermo_raw = _read_member(".thermoregulation.json")
+        if thermo_raw is None:
+            thermo_raw = _read_member("thermoregulation.json")
         archive.close()
 
         if reg_list_raw is None or conf_raw is None:
@@ -697,6 +745,11 @@ class TermogeaClient:
             mb_catalog = self._parse_reg_list(mb_reg_list_raw)
             for name, register in mb_catalog.items():
                 register_catalog.setdefault(name, register)
+
+        # Capacita' per zona da .thermoregulation.json: supports_cooling se il
+        # raffrescamento e' controllato, supports_dehumidification se presente
+        # un deumidificatore. Chiave zonaN -> dict di capacita'.
+        zone_capabilities = self._parse_zone_capabilities(thermo_raw)
 
         base_global = parser["thcontrol"] if parser.has_section("thcontrol") else {}
         custom_global = custom_parser["thcontrol"] if custom_parser.has_section("thcontrol") else {}
@@ -743,6 +796,16 @@ class TermogeaClient:
             )
             if not hnow_name:
                 hnow_name = self._find_humidity_reg_name_in_section(section)
+
+            # Registro stagione per-zona: nome + valori raw winter/summer.
+            season_enabled = str(
+                section.get("THC_MOD_SEASON_ENABLED", "false")
+            ).strip().lower() in {"1", "true", "yes", "on"}
+            season_name = self._strip_quotes(section.get("THC_SEASON_REG_NAME", ""))
+            season_winter_val = self._safe_int(section.get("THC_SEASON_REG_VAL_WINTER"))
+            season_summer_val = self._safe_int(section.get("THC_SEASON_REG_VAL_SUMMER"))
+            # Registro setpoint umidita' per-zona.
+            hset_name = self._strip_quotes(section.get("THC_HSET_REG_NAME", ""))
 
             # Prefer display temperature register when available: in several
             # controller configs THC_TNOW_REG_NAME points to MB Control raw
@@ -847,6 +910,75 @@ class TermogeaClient:
                 "on",
             }
 
+            # Registro stagione per-zona: deve essere scrivibile e portare i
+            # valori raw winter/summer. Se il nome non e' risolvibile o non e'
+            # scrivibile, resta None (fail-safe: nessuna scrittura stagione).
+            season_def = None
+            season_tuple = (
+                self._find_register_entry_by_names(register_catalog, [season_name])
+                if season_enabled and season_name
+                else None
+            )
+            if season_tuple is not None and "W" in season_tuple[1]:
+                season_def = RegisterDefinition(
+                    mod=season_tuple[0].mod,
+                    reg=season_tuple[0].reg,
+                    scale=season_tuple[0].scale,
+                    precision=season_tuple[0].precision,
+                    winter_value=(
+                        season_winter_val
+                        if season_winter_val is not None
+                        else ZONE_SEASON_VALUE_WINTER
+                    ),
+                    summer_value=(
+                        season_summer_val
+                        if season_summer_val is not None
+                        else ZONE_SEASON_VALUE_SUMMER
+                    ),
+                )
+
+            # Registro setpoint umidita' per-zona (scrivibile).
+            humidity_setpoint_def = None
+            hset_tuple = (
+                self._find_register_entry_by_names(register_catalog, [hset_name])
+                if hset_name
+                else None
+            )
+            if hset_tuple is not None and "W" in hset_tuple[1]:
+                humidity_setpoint_def = hset_tuple[0]
+
+            # Capacita' zona da .thermoregulation.json (default retrocompat:
+            # cooling abilitato, deumidificazione disabilitata).
+            zone_caps = zone_capabilities.get(idx, {})
+            supports_cooling = bool(zone_caps.get("supports_cooling", True))
+            supports_dehumidification = bool(
+                zone_caps.get("supports_dehumidification", False)
+            )
+
+            # Setpoint estivi con semantica raffrescamento (freddo). I limiti
+            # THC_M_TMINS/TMAXS della centralina sono limiti tecnici (es. 13-20)
+            # non setpoint di comfort: usarli direttamente darebbe un comfort
+            # irrealistico. Si adottano quindi i default freddo sensati e li si
+            # clampa entro i limiti tecnici solo quando questi sono in un range
+            # di comfort plausibile per il raffrescamento (>= 20 °C).
+            s_comfort, s_eco, s_away, s_night, s_inactive = (
+                25.0,
+                27.0,
+                29.0,
+                26.0,
+                30.0,
+            )
+            summer_t_min = self._safe_float(section.get("THC_M_TMINS"), 0.0)
+            summer_t_max = self._safe_float(section.get("THC_M_TMAXS"), 0.0)
+            if 20.0 <= summer_t_min < summer_t_max:
+                # In estate il comfort e' piu' freddo (vicino al minimo) e la
+                # zona a riposo (inactive) e' piu' calda (vicino al massimo).
+                s_comfort = round(summer_t_min, 1)
+                s_away = round(summer_t_max, 1)
+                s_eco = round((summer_t_min + summer_t_max) / 2, 1)
+                s_night = round((summer_t_min + s_eco) / 2, 1)
+                s_inactive = round(summer_t_max, 1)
+
             zones.append(
                 ZoneDefinition(
                     zone_id=f"zona_{idx}",
@@ -856,11 +988,20 @@ class TermogeaClient:
                     target_temperature=target_def,
                     hvac_mode=hvac_def,
                     status_register=status_def,
+                    season_register=season_def,
+                    humidity_setpoint=humidity_setpoint_def,
                     comfort_temp=zone_comfort,
                     eco_temp=zone_eco,
                     away_temp=away,
                     night_temp=night,
                     inactive_temp=inactive,
+                    supports_cooling=supports_cooling,
+                    supports_dehumidification=supports_dehumidification,
+                    summer_comfort_temp=s_comfort,
+                    summer_eco_temp=s_eco,
+                    summer_away_temp=s_away,
+                    summer_night_temp=s_night,
+                    summer_inactive_temp=s_inactive,
                     enabled=zone_enabled,
                     custom_setpoints=False,
                 )
@@ -912,11 +1053,15 @@ class TermogeaClient:
             winter_away_temp=away,
             winter_night_temp=night,
             winter_inactive_temp=inactive,
-            summer_comfort_temp=comfort,
-            summer_eco_temp=eco,
-            summer_away_temp=away,
-            summer_night_temp=night,
-            summer_inactive_temp=inactive,
+            # Default estivi con semantica freddo: NON piu' copiati dagli
+            # invernali (comfort = piu' freddo, inactive = piu' caldo).
+            summer_comfort_temp=25.0,
+            summer_eco_temp=27.0,
+            summer_away_temp=29.0,
+            summer_night_temp=26.0,
+            summer_inactive_temp=30.0,
+            dewpoint_protection_enabled=True,
+            dewpoint_margin=DEFAULT_DEWPOINT_MARGIN,
             schedule_enabled=bool(rules_winter or rules_summer),
             schedule_rules=rules_winter or rules_summer,
             schedule_rules_winter=rules_winter,

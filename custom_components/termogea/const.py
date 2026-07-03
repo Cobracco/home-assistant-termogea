@@ -52,6 +52,34 @@ ATTR_MAPPING_COMPLETE = "mapping_complete"
 ATTR_ENABLED = "enabled"
 ATTR_MANUAL_OVERRIDE_ALLOWED = "manual_override_allowed"
 ATTR_CUSTOM_SETPOINTS = "custom_setpoints"
+# Attributi nuovi per il raffrescamento estivo
+ATTR_CONDITIONING_ACTIVE = "conditioning_active"
+ATTR_SEASON = "season"
+ATTR_DEW_POINT = "dew_point"
+ATTR_SUPPORTS_COOLING = "supports_cooling"
+ATTR_SUPPORTS_DEHUMIDIFICATION = "supports_dehumidification"
+
+# Registro globale Season (sola lettura): stagione operativa della centralina.
+# Verificato live: mod=10, reg=99, 0=inverno, 1=estate. NON scrivibile.
+GLOBAL_SEASON_REGISTER_MOD = 10
+GLOBAL_SEASON_REGISTER_REG = 99
+GLOBAL_SEASON_VALUE_WINTER = 0
+GLOBAL_SEASON_VALUE_SUMMER = 1
+
+# Valori raw del registro per-zona "ZoneN season" (RW, scale 10).
+# WINTER=0 / SUMMER=10 come da telegea.conf (THC_SEASON_REG_VAL_*).
+ZONE_SEASON_VALUE_WINTER = 0
+ZONE_SEASON_VALUE_SUMMER = 10
+
+# Stringhe stagione operativa usate internamente dalla policy/coordinator.
+SEASON_WINTER = "winter"
+SEASON_SUMMER = "summer"
+
+# Motivi di policy specifici del raffrescamento estivo.
+POLICY_REASON_COOLING_NOT_SUPPORTED = "cooling_not_supported"
+
+# Protezione anticondensa: margine di default sopra il punto di rugiada (°C).
+DEFAULT_DEWPOINT_MARGIN = 1.5
 
 GLOBAL_MODE_AUTO = "auto"
 GLOBAL_MODE_COMFORT = "comfort"

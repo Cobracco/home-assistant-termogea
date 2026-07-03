@@ -52,10 +52,20 @@ async def async_setup_entry(
     entity_registry = er.async_get(hass)
     for zone in storage.config.zones:
         humidity_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_humidity"
+        dew_point_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_dew_point"
         status_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}_status_value"
         if zone.current_humidity is not None:
             entities.append(
                 TermogeaHumiditySensor(
+                    coordinator,
+                    storage,
+                    zone.zone_id,
+                )
+            )
+            # Sensore punto di rugiada per zona: esiste solo quando la zona ha
+            # l'umidità mappata (serve per calcolare il dew point).
+            entities.append(
+                TermogeaDewPointSensor(
                     coordinator,
                     storage,
                     zone.zone_id,
@@ -69,6 +79,13 @@ async def async_setup_entry(
             )
             if stale_entity_id:
                 entity_registry.async_remove(stale_entity_id)
+            stale_dew_point_id = entity_registry.async_get_entity_id(
+                "sensor",
+                DOMAIN,
+                dew_point_unique_id,
+            )
+            if stale_dew_point_id:
+                entity_registry.async_remove(stale_dew_point_id)
         if zone.status_register is not None:
             entities.append(
                 TermogeaZoneStatusValueSensor(
@@ -162,11 +179,14 @@ class TermogeaPolicyTextSensor(_PolicyBaseEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         zone = self._storage.get_zone(self._zone_id)
+        snapshot = self.coordinator.data.get(self._zone_id)
         decision = evaluate_zone_policy(
             self.hass,
             zone,
             self._storage.config.zones,
             self._storage.config.global_config,
+            getattr(self.coordinator, "observed_season", None),
+            dew_point=None if snapshot is None else snapshot.dew_point,
         )
         return str(getattr(decision, self._sensor_key))
 
@@ -195,11 +215,14 @@ class TermogeaPolicyNumericSensor(_PolicyBaseEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         zone = self._storage.get_zone(self._zone_id)
+        snapshot = self.coordinator.data.get(self._zone_id)
         decision = evaluate_zone_policy(
             self.hass,
             zone,
             self._storage.config.zones,
             self._storage.config.global_config,
+            getattr(self.coordinator, "observed_season", None),
+            dew_point=None if snapshot is None else snapshot.dew_point,
         )
         return decision.effective_target
 
@@ -216,10 +239,16 @@ class TermogeaGlobalSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
+        observed_season = getattr(self.coordinator, "observed_season", None)
         if self._key == "active_mode":
-            return resolve_active_mode(self._storage.config.global_config)
+            return resolve_active_mode(
+                self._storage.config.global_config, None, observed_season
+            )
         if self._key == "active_season":
-            return resolve_active_season(self._storage.config.global_config)
+            # Riflette la stagione osservata dal registro globale (con override).
+            return resolve_active_season(
+                self._storage.config.global_config, observed_season
+            )
         if self._key == "configured_zones":
             return len(self._storage.config.zones)
         return None
@@ -272,6 +301,43 @@ class TermogeaHumiditySensor(CoordinatorEntity, SensorEntity):
             attrs["humidity_register_scale"] = zone.current_humidity.scale
             attrs["humidity_register_precision"] = zone.current_humidity.precision
         return attrs
+
+
+class TermogeaDewPointSensor(CoordinatorEntity, SensorEntity):
+    """Sensore che espone il punto di rugiada calcolato per la zona."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_icon = "mdi:water-thermometer"
+
+    def __init__(self, coordinator, storage, zone_id: str) -> None:
+        super().__init__(coordinator)
+        self._storage = storage
+        self._zone_id = zone_id
+        zone = storage.get_zone(zone_id)
+        self._attr_name = f"{zone.name} Dew Point"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{zone_id}_dew_point"
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return None if snapshot is None else snapshot.dew_point
+
+    @property
+    def available(self) -> bool:
+        # Disponibile solo quando c'è uno snapshot con dew point calcolato
+        # (temperatura + umidità valide).
+        snapshot = self.coordinator.data.get(self._zone_id)
+        return (
+            super().available
+            and snapshot is not None
+            and snapshot.dew_point is not None
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        zone = self._storage.get_zone(self._zone_id)
+        return zone_device_info(self.coordinator.config_entry, zone)
 
 
 class TermogeaZoneStatusValueSensor(CoordinatorEntity, SensorEntity):

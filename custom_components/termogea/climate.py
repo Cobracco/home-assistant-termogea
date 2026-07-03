@@ -7,6 +7,7 @@ from datetime import timedelta
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -22,7 +23,9 @@ from .const import (
     ATTR_ACTIVE_MODE,
     ATTR_ASSIGNED_PEOPLE,
     ATTR_ASSIGNED_PEOPLE_PRESENT,
+    ATTR_CONDITIONING_ACTIVE,
     ATTR_CUSTOM_SETPOINTS,
+    ATTR_DEW_POINT,
     ATTR_EFFECTIVE_TARGET,
     ATTR_ENABLED,
     ATTR_HEATING_ACTIVE,
@@ -32,17 +35,27 @@ from .const import (
     ATTR_POLICY_REASON,
     ATTR_PRESENCE_DETECTED,
     ATTR_PRESENCE_SENSOR,
+    ATTR_SEASON,
+    ATTR_SUPPORTS_COOLING,
+    ATTR_SUPPORTS_DEHUMIDIFICATION,
     ATTR_ZONE_ENABLED,
     ATTR_ZONE_STATUS_VALUE,
     ATTR_ZONE_ID,
     DATA_COORDINATOR,
     DATA_STORAGE,
     DOMAIN,
+    SEASON_SUMMER,
+    SEASON_WINTER,
     SERVICE_APPLY_ZONE_POLICY,
 )
 from .entity import zone_device_info
 from .models import ZoneDefinition
-from .policy import evaluate_zone_policy, is_zone_heating_active
+from .policy import (
+    conditioning_is_cooling,
+    evaluate_zone_policy,
+    is_zone_conditioning_active,
+    resolve_active_season,
+)
 
 
 async def async_setup_entry(
@@ -61,7 +74,6 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
     """Representation of a Termogea zone."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
     def __init__(self, coordinator, storage, zone: ZoneDefinition) -> None:
@@ -71,11 +83,37 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         self._manual_override_unsub = None
         self._attr_name = zone.name
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{zone.zone_id}"
-        if zone.hvac_mode is not None:
+        # Le zone senza registro OnOff non possono essere spente: espongono solo
+        # il modo attivo (HEAT o COOL). Le altre supportano anche accensione e
+        # spegnimento (TURN_ON/TURN_OFF).
+        self._has_onoff = zone.hvac_mode is not None
+        if self._has_onoff:
             self._attr_supported_features |= ClimateEntityFeature.TURN_ON
             self._attr_supported_features |= ClimateEntityFeature.TURN_OFF
-        else:
-            self._attr_hvac_modes = [HVACMode.HEAT]
+
+    def _is_cooling_season(self) -> bool:
+        """Return True quando la stagione operativa e' l'estate."""
+        season = resolve_active_season(
+            self._storage.config.global_config,
+            getattr(self.coordinator, "observed_season", None),
+        )
+        return conditioning_is_cooling(season)
+
+    @property
+    def hvac_modes(self) -> list[HVACMode]:
+        """Modi disponibili dinamici: estate COOL, inverno HEAT (+ OFF).
+
+        In estate le zone che non supportano il raffrescamento non espongono
+        COOL: comandarlo equivarrebbe ad accendere il raffrescamento su una
+        zona radiante non controllata. Restano a riposo (solo OFF, se mappato).
+        """
+        cooling_season = self._is_cooling_season()
+        if cooling_season and not self._zone.supports_cooling:
+            return [HVACMode.OFF] if self._has_onoff else []
+        active = HVACMode.COOL if cooling_season else HVACMode.HEAT
+        if self._has_onoff:
+            return [active, HVACMode.OFF]
+        return [active]
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -126,11 +164,34 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
     def hvac_mode(self) -> HVACMode:
         snapshot = self.coordinator.data.get(self._zone_id)
         zone = self._zone
+        active = HVACMode.COOL if self._is_cooling_season() else HVACMode.HEAT
         if snapshot is None:
-            return HVACMode.OFF if zone.hvac_mode else HVACMode.HEAT
+            return HVACMode.OFF if zone.hvac_mode else active
         if snapshot.hvac_mode == "off":
             return HVACMode.OFF
-        return HVACMode.HEAT
+        return active
+
+    @property
+    def hvac_action(self) -> HVACAction:
+        """Azione corrente: cooling/heating quando c'e' domanda, idle o off."""
+        snapshot = self.coordinator.data.get(self._zone_id)
+        zone = self._zone
+        if snapshot is not None and snapshot.hvac_mode == "off":
+            return HVACAction.OFF
+        cooling = self._is_cooling_season()
+        decision = evaluate_zone_policy(
+            self.hass,
+            zone,
+            self._storage.config.zones,
+            self._storage.config.global_config,
+            getattr(self.coordinator, "observed_season", None),
+            dew_point=None if snapshot is None else snapshot.dew_point,
+        )
+        if not decision.zone_enabled:
+            return HVACAction.OFF
+        if is_zone_conditioning_active(snapshot, decision, cooling=cooling):
+            return HVACAction.COOLING if cooling else HVACAction.HEATING
+        return HVACAction.IDLE
 
     @property
     def available(self) -> bool:
@@ -140,11 +201,19 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
     def extra_state_attributes(self) -> dict[str, object]:
         zone = self._zone
         snapshot = self.coordinator.data.get(self._zone_id)
+        cooling = self._is_cooling_season()
         decision = evaluate_zone_policy(
             self.hass,
             zone,
             self._storage.config.zones,
             self._storage.config.global_config,
+            getattr(self.coordinator, "observed_season", None),
+            dew_point=None if snapshot is None else snapshot.dew_point,
+        )
+        conditioning_active = is_zone_conditioning_active(
+            snapshot,
+            decision,
+            cooling=cooling,
         )
         return {
             ATTR_ZONE_ID: zone.zone_id,
@@ -156,16 +225,20 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
             ATTR_ASSIGNED_PEOPLE_PRESENT: decision.assigned_people_present,
             ATTR_PRESENCE_DETECTED: decision.presence_detected,
             ATTR_ZONE_ENABLED: decision.zone_enabled,
-            ATTR_HEATING_ACTIVE: is_zone_heating_active(
-                snapshot,
-                decision,
-            ),
+            # Manteniamo la chiave storica heating_active per retrocompat degli
+            # attributi ed esponiamo il concetto neutro conditioning_active.
+            ATTR_HEATING_ACTIVE: conditioning_active,
+            ATTR_CONDITIONING_ACTIVE: conditioning_active,
+            ATTR_SEASON: SEASON_SUMMER if cooling else SEASON_WINTER,
+            ATTR_DEW_POINT: None if snapshot is None else snapshot.dew_point,
             ATTR_ZONE_STATUS_VALUE: None if snapshot is None else snapshot.status_value,
             ATTR_ACTIVE_MODE: decision.active_mode,
             ATTR_MAPPING_COMPLETE: zone.mapping_complete,
             ATTR_ENABLED: zone.enabled,
             ATTR_MANUAL_OVERRIDE_ALLOWED: zone.manual_override_allowed,
             ATTR_CUSTOM_SETPOINTS: zone.custom_setpoints,
+            ATTR_SUPPORTS_COOLING: zone.supports_cooling,
+            ATTR_SUPPORTS_DEHUMIDIFICATION: zone.supports_dehumidification,
         }
 
     @property
@@ -247,6 +320,25 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         if temperature is None or zone.target_temperature is None:
             return
         requested = float(temperature)
+
+        # Clamp anticondensa: in raffrescamento estivo il setpoint richiesto
+        # dall'utente non deve mai scendere sotto dew_point + margine, altrimenti
+        # rischio condensa sul fancoil. Stesso vincolo applicato dalla policy in
+        # policy._apply_seasonal_adjustments, replicato qui perche' la card
+        # climate scrive direttamente senza passare dalla policy.
+        settings = self._storage.config.global_config
+        snapshot = self.coordinator.data.get(self._zone_id)
+        dew_point = None if snapshot is None else snapshot.dew_point
+        if (
+            self._is_cooling_season()
+            and settings.dewpoint_protection_enabled
+            and dew_point is not None
+        ):
+            # Margine mai negativo: il floor non scende sotto il dew point puro.
+            floor = round(dew_point + max(0.0, settings.dewpoint_margin), 1)
+            if requested < floor:
+                requested = floor
+
         await self.coordinator.client.async_write_scaled_register(
             zone.target_temperature,
             requested,
@@ -272,12 +364,25 @@ class TermogeaClimateEntity(CoordinatorEntity, ClimateEntity):
         if zone.hvac_mode is None:
             return
 
+        # In estate una zona senza raffrescamento non deve mai essere accesa in
+        # COOL: comandarlo attiverebbe il raffrescamento su una zona radiante
+        # non controllata. Ignora la richiesta (resta a riposo).
+        if (
+            hvac_mode == HVACMode.COOL
+            and self._is_cooling_season()
+            and not zone.supports_cooling
+        ):
+            return
+
+        # Il registro OnOff e' unico per caldo e freddo: sia HEAT che COOL
+        # accendono la zona (heat_value), OFF la spegne (off_value). La stagione
+        # operativa e' comandata a parte via registro season nella policy.
         if hvac_mode == HVACMode.OFF and zone.hvac_mode.off_value is not None:
             await self.coordinator.client.async_write_register_value(
                 zone.hvac_mode,
                 zone.hvac_mode.off_value,
             )
-        elif hvac_mode == HVACMode.HEAT and zone.hvac_mode.heat_value is not None:
+        elif hvac_mode in (HVACMode.HEAT, HVACMode.COOL) and zone.hvac_mode.heat_value is not None:
             await self.coordinator.client.async_write_register_value(
                 zone.hvac_mode,
                 zone.hvac_mode.heat_value,

@@ -49,6 +49,8 @@ def _parse_register(data: dict | None, *, required: bool) -> RegisterDefinition 
         step=_parse_optional_float(data.get("step")),
         off_value=_parse_optional_int(data.get("off_value")),
         heat_value=_parse_optional_int(data.get("heat_value")),
+        winter_value=_parse_optional_int(data.get("winter_value")),
+        summer_value=_parse_optional_int(data.get("summer_value")),
     )
 
 
@@ -85,6 +87,22 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
     away = float(zone_data.get("away_temp", presets.get("away", 16.0)))
     night = float(zone_data.get("night_temp", presets.get("night", 18.0)))
     inactive = float(zone_data.get("inactive_temp", zone_data.get("off_temp", away)))
+    # Setpoint estivi con semantica raffrescamento (freddo). Se assenti nello
+    # storage, si usano i default freddo del modello (comfort 25 ... inactive 30).
+    summer_presets = zone_data.get("summer_presets", {})
+    summer_comfort = float(
+        zone_data.get("summer_comfort_temp", summer_presets.get("comfort", 25.0))
+    )
+    summer_eco = float(zone_data.get("summer_eco_temp", summer_presets.get("eco", 27.0)))
+    summer_away = float(
+        zone_data.get("summer_away_temp", summer_presets.get("away", 29.0))
+    )
+    summer_night = float(
+        zone_data.get("summer_night_temp", summer_presets.get("night", 26.0))
+    )
+    summer_inactive = float(
+        zone_data.get("summer_inactive_temp", summer_presets.get("inactive", 30.0))
+    )
     zone_schedule_rules_legacy = _parse_schedule_rules(zone_data.get("schedule_rules", []))
     zone_schedule_rules_winter = _parse_schedule_rules(
         zone_data.get("schedule_rules_winter", zone_data.get("schedule_rules", []))
@@ -104,6 +122,10 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         target_temperature=_parse_register(zone_data.get("target_temperature"), required=False),
         hvac_mode=_parse_register(zone_data.get("hvac_mode"), required=False),
         status_register=_parse_register(zone_data.get("status_register"), required=False),
+        season_register=_parse_register(zone_data.get("season_register"), required=False),
+        humidity_setpoint=_parse_register(
+            zone_data.get("humidity_setpoint"), required=False
+        ),
         people=[str(person) for person in zone_data.get("people", [])],
         presence_sensor=zone_data.get("presence_sensor"),
         is_common_area=bool(zone_data.get("is_common_area", False)),
@@ -126,6 +148,15 @@ def _parse_zone(zone_data: dict) -> ZoneDefinition:
         away_temp=away,
         night_temp=night,
         inactive_temp=inactive,
+        supports_cooling=bool(zone_data.get("supports_cooling", True)),
+        supports_dehumidification=bool(
+            zone_data.get("supports_dehumidification", False)
+        ),
+        summer_comfort_temp=summer_comfort,
+        summer_eco_temp=summer_eco,
+        summer_away_temp=summer_away,
+        summer_night_temp=summer_night,
+        summer_inactive_temp=summer_inactive,
     )
 
 
@@ -160,11 +191,17 @@ def _parse_global_config(data: dict | None) -> GlobalConfig:
         winter_away_temp=float(data.get("winter_away_temp", away_temp)),
         winter_night_temp=float(data.get("winter_night_temp", night_temp)),
         winter_inactive_temp=float(data.get("winter_inactive_temp", inactive_temp)),
-        summer_comfort_temp=float(data.get("summer_comfort_temp", comfort_temp)),
-        summer_eco_temp=float(data.get("summer_eco_temp", eco_temp)),
-        summer_away_temp=float(data.get("summer_away_temp", away_temp)),
-        summer_night_temp=float(data.get("summer_night_temp", night_temp)),
-        summer_inactive_temp=float(data.get("summer_inactive_temp", inactive_temp)),
+        # Default estivi con semantica freddo: NON piu' allineati ai valori base
+        # invernali. Se lo storage ha gia' summer_* espliciti restano invariati.
+        summer_comfort_temp=float(data.get("summer_comfort_temp", 25.0)),
+        summer_eco_temp=float(data.get("summer_eco_temp", 27.0)),
+        summer_away_temp=float(data.get("summer_away_temp", 29.0)),
+        summer_night_temp=float(data.get("summer_night_temp", 26.0)),
+        summer_inactive_temp=float(data.get("summer_inactive_temp", 30.0)),
+        dewpoint_protection_enabled=bool(
+            data.get("dewpoint_protection_enabled", True)
+        ),
+        dewpoint_margin=float(data.get("dewpoint_margin", 1.5)),
         schedule_enabled=bool(data.get("schedule_enabled", True)),
         schedule_rules=legacy_schedule_rules,
         schedule_rules_winter=schedule_rules_winter,

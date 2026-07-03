@@ -12,7 +12,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DATA_STORAGE, DOMAIN
 from .entity import zone_device_info
-from .policy import evaluate_zone_policy, is_zone_heating_active
+from .policy import (
+    conditioning_is_cooling,
+    evaluate_zone_policy,
+    is_zone_conditioning_active,
+    resolve_active_season,
+)
 
 
 async def async_setup_entry(
@@ -57,12 +62,15 @@ async def async_setup_entry(
             )
         )
         entities.append(
+            # Concetto rinominato in "Conditioning Active" (neutro caldo/freddo).
+            # unique_suffix e sensor_key storici invariati per non duplicare le
+            # entità esistenti; cambia solo il friendly name.
             TermogeaZoneBinarySensor(
                 coordinator,
                 storage,
                 zone.zone_id,
                 sensor_key="heating_active",
-                name_suffix="Heating Active",
+                name_suffix="Conditioning Active",
                 unique_suffix="heating_active",
             )
         )
@@ -118,13 +126,23 @@ class TermogeaZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         zone = self._storage.get_zone(self._zone_id)
+        observed_season = getattr(self.coordinator, "observed_season", None)
+        snapshot = self.coordinator.data.get(self._zone_id)
         decision = evaluate_zone_policy(
             self.hass,
             zone,
             self._storage.config.zones,
             self._storage.config.global_config,
+            observed_season,
+            dew_point=None if snapshot is None else snapshot.dew_point,
         )
         if self._sensor_key == "heating_active":
-            snapshot = self.coordinator.data.get(self._zone_id)
-            return is_zone_heating_active(snapshot, decision)
+            # Chiave/unique_id storici mantenuti: la logica ora e' neutra e usa
+            # la direzione corretta (raffrescamento in estate).
+            cooling = conditioning_is_cooling(
+                resolve_active_season(
+                    self._storage.config.global_config, observed_season
+                )
+            )
+            return is_zone_conditioning_active(snapshot, decision, cooling=cooling)
         return bool(getattr(decision, self._sensor_key))

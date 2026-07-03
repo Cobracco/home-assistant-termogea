@@ -144,6 +144,17 @@ def _global_schema(defaults: GlobalConfig) -> vol.Schema:
                 "summer_inactive_temp",
                 default=defaults.summer_inactive_temp,
             ): vol.Coerce(float),
+            # Protezione anticondensa: abilitazione e margine (°C) sopra il dew point.
+            vol.Required(
+                "dewpoint_protection_enabled",
+                default=defaults.dewpoint_protection_enabled,
+            ): bool,
+            # Il margine non puo' essere negativo: il floor anticondensa non deve
+            # mai scendere sotto il dew point puro.
+            vol.Required(
+                "dewpoint_margin",
+                default=defaults.dewpoint_margin,
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=5.0)),
         }
     )
 
@@ -161,6 +172,8 @@ def _register_to_defaults(register: RegisterDefinition | None) -> dict[str, Any]
         "step": register.step,
         "off_value": register.off_value,
         "heat_value": register.heat_value,
+        "winter_value": register.winter_value,
+        "summer_value": register.summer_value,
     }
 
 
@@ -179,6 +192,16 @@ def _build_register(prefix: str, data: dict[str, Any]) -> RegisterDefinition | N
         step=(float(data[f"{prefix}_step"]) if data.get(f"{prefix}_step") not in (None, "") else None),
         off_value=(int(data[f"{prefix}_off_value"]) if data.get(f"{prefix}_off_value") not in (None, "") else None),
         heat_value=(int(data[f"{prefix}_heat_value"]) if data.get(f"{prefix}_heat_value") not in (None, "") else None),
+        winter_value=(
+            int(data[f"{prefix}_winter_value"])
+            if data.get(f"{prefix}_winter_value") not in (None, "")
+            else None
+        ),
+        summer_value=(
+            int(data[f"{prefix}_summer_value"])
+            if data.get(f"{prefix}_summer_value") not in (None, "")
+            else None
+        ),
     )
 
 
@@ -216,6 +239,36 @@ def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Sch
         vol.Required("away_temp", default=defaults.away_temp): vol.Coerce(float),
         vol.Required("night_temp", default=defaults.night_temp): vol.Coerce(float),
         vol.Required("inactive_temp", default=defaults.inactive_temp): vol.Coerce(float),
+        # Capacità della zona: raffrescamento e deumidificazione.
+        vol.Required(
+            "supports_cooling",
+            default=defaults.supports_cooling,
+        ): bool,
+        vol.Required(
+            "supports_dehumidification",
+            default=defaults.supports_dehumidification,
+        ): bool,
+        # Setpoint estivi per-zona (semantica raffrescamento: comfort = più freddo).
+        vol.Required(
+            "summer_comfort_temp",
+            default=defaults.summer_comfort_temp,
+        ): vol.Coerce(float),
+        vol.Required(
+            "summer_eco_temp",
+            default=defaults.summer_eco_temp,
+        ): vol.Coerce(float),
+        vol.Required(
+            "summer_away_temp",
+            default=defaults.summer_away_temp,
+        ): vol.Coerce(float),
+        vol.Required(
+            "summer_night_temp",
+            default=defaults.summer_night_temp,
+        ): vol.Coerce(float),
+        vol.Required(
+            "summer_inactive_temp",
+            default=defaults.summer_inactive_temp,
+        ): vol.Coerce(float),
     }
 
     if defaults.presence_sensor:
@@ -236,12 +289,19 @@ def _zone_policy_schema(hass, defaults: ZoneDefinition | None = None) -> vol.Sch
     return vol.Schema(schema)
 
 
+def _default_str(value: Any) -> str:
+    """Rappresenta un valore opzionale come stringa vuota se assente."""
+    return "" if value in (None, "") else str(value)
+
+
 def _zone_mapping_schema(defaults: ZoneDefinition | None = None) -> vol.Schema:
     defaults = defaults or ZoneDefinition(zone_id="", name="")
     current = _register_to_defaults(defaults.current_temperature)
     humidity = _register_to_defaults(defaults.current_humidity)
     target = _register_to_defaults(defaults.target_temperature)
     hvac = _register_to_defaults(defaults.hvac_mode)
+    season = _register_to_defaults(defaults.season_register)
+    humidity_sp = _register_to_defaults(defaults.humidity_setpoint)
     return vol.Schema(
         {
             vol.Optional("current_mod", default=current.get("mod", "")): str,
@@ -263,6 +323,30 @@ def _zone_mapping_schema(defaults: ZoneDefinition | None = None) -> vol.Schema:
             vol.Optional("hvac_reg", default=hvac.get("reg", "")): str,
             vol.Optional("hvac_off_value", default=hvac.get("off_value", "")): str,
             vol.Optional("hvac_heat_value", default=hvac.get("heat_value", "")): str,
+            # Registro stagione per-zona (RW): mod/reg + valori raw winter/summer.
+            vol.Optional("season_mod", default=_default_str(season.get("mod"))): str,
+            vol.Optional("season_reg", default=_default_str(season.get("reg"))): str,
+            vol.Optional(
+                "season_winter_value",
+                default=_default_str(season.get("winter_value")),
+            ): str,
+            vol.Optional(
+                "season_summer_value",
+                default=_default_str(season.get("summer_value")),
+            ): str,
+            # Registro setpoint umidità per-zona (RW): mod/reg + scala.
+            vol.Optional(
+                "humidity_setpoint_mod",
+                default=_default_str(humidity_sp.get("mod")),
+            ): str,
+            vol.Optional(
+                "humidity_setpoint_reg",
+                default=_default_str(humidity_sp.get("reg")),
+            ): str,
+            vol.Optional(
+                "humidity_setpoint_scale",
+                default=humidity_sp.get("scale", 1.0) or 1.0,
+            ): vol.Coerce(float),
         }
     )
 
@@ -472,11 +556,24 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 winter_away_temp=float(user_input["winter_away_temp"]),
                 winter_night_temp=float(user_input["winter_night_temp"]),
                 winter_inactive_temp=float(user_input["winter_inactive_temp"]),
+                # Setpoint estivi (semantica raffrescamento): tenuti DISTINTI dai
+                # valori invernali. NON devono essere allineati ai winter_*.
                 summer_comfort_temp=float(user_input["summer_comfort_temp"]),
                 summer_eco_temp=float(user_input["summer_eco_temp"]),
                 summer_away_temp=float(user_input["summer_away_temp"]),
                 summer_night_temp=float(user_input["summer_night_temp"]),
                 summer_inactive_temp=float(user_input["summer_inactive_temp"]),
+                # Protezione anticondensa: default coerenti con GlobalConfig se il
+                # campo non è presente nell'input (retrocompat form vecchi).
+                dewpoint_protection_enabled=bool(
+                    user_input.get(
+                        "dewpoint_protection_enabled",
+                        current.dewpoint_protection_enabled,
+                    )
+                ),
+                dewpoint_margin=float(
+                    user_input.get("dewpoint_margin", current.dewpoint_margin)
+                ),
                 schedule_enabled=bool(user_input["schedule_enabled"]),
                 schedule_rules=current.schedule_rules,
                 schedule_rules_winter=current.schedule_rules_winter,
@@ -587,6 +684,10 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     target_temperature=current_zone.target_temperature if current_zone else None,
                     hvac_mode=current_zone.hvac_mode if current_zone else None,
                     status_register=current_zone.status_register if current_zone else None,
+                    # I registri tecnici season/humidity_setpoint sono gestiti nel
+                    # mapping tecnico: qui vanno preservati senza modificarli.
+                    season_register=current_zone.season_register if current_zone else None,
+                    humidity_setpoint=current_zone.humidity_setpoint if current_zone else None,
                     people=list(user_input.get("people", [])),
                     presence_sensor=user_input.get("presence_sensor") or None,
                     is_common_area=bool(user_input["is_common_area"]),
@@ -605,6 +706,51 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     away_temp=float(user_input["away_temp"]),
                     night_temp=float(user_input["night_temp"]),
                     inactive_temp=float(user_input["inactive_temp"]),
+                    # Capacità della zona: default sui valori correnti se il campo
+                    # non è presente nell'input (retrocompat form vecchi).
+                    supports_cooling=bool(
+                        user_input.get(
+                            "supports_cooling",
+                            current_zone.supports_cooling if current_zone else True,
+                        )
+                    ),
+                    supports_dehumidification=bool(
+                        user_input.get(
+                            "supports_dehumidification",
+                            current_zone.supports_dehumidification if current_zone else False,
+                        )
+                    ),
+                    # Setpoint estivi per-zona (semantica raffrescamento).
+                    summer_comfort_temp=float(
+                        user_input.get(
+                            "summer_comfort_temp",
+                            current_zone.summer_comfort_temp if current_zone else 25.0,
+                        )
+                    ),
+                    summer_eco_temp=float(
+                        user_input.get(
+                            "summer_eco_temp",
+                            current_zone.summer_eco_temp if current_zone else 27.0,
+                        )
+                    ),
+                    summer_away_temp=float(
+                        user_input.get(
+                            "summer_away_temp",
+                            current_zone.summer_away_temp if current_zone else 29.0,
+                        )
+                    ),
+                    summer_night_temp=float(
+                        user_input.get(
+                            "summer_night_temp",
+                            current_zone.summer_night_temp if current_zone else 26.0,
+                        )
+                    ),
+                    summer_inactive_temp=float(
+                        user_input.get(
+                            "summer_inactive_temp",
+                            current_zone.summer_inactive_temp if current_zone else 30.0,
+                        )
+                    ),
                 )
                 if updated_zone.custom_schedule and not current_zone.custom_schedule:
                     global_config = storage.config.global_config
@@ -619,6 +765,13 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                     updated_zone.away_temp = float(global_config.away_temp)
                     updated_zone.night_temp = float(global_config.night_temp)
                     updated_zone.inactive_temp = float(global_config.inactive_temp)
+                    # Anche i setpoint estivi seguono i globali estivi quando la
+                    # zona non usa temperature personalizzate.
+                    updated_zone.summer_comfort_temp = float(global_config.summer_comfort_temp)
+                    updated_zone.summer_eco_temp = float(global_config.summer_eco_temp)
+                    updated_zone.summer_away_temp = float(global_config.summer_away_temp)
+                    updated_zone.summer_night_temp = float(global_config.summer_night_temp)
+                    updated_zone.summer_inactive_temp = float(global_config.summer_inactive_temp)
                 await storage.async_upsert_zone(updated_zone)
                 if current_zone and current_zone.zone_id != zone_id:
                     await storage.async_delete_zone(current_zone.zone_id)
@@ -673,6 +826,10 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 target_temperature=_build_register("target", user_input),
                 hvac_mode=_build_register("hvac", user_input),
                 status_register=current_zone.status_register,
+                # Nuovi registri tecnici mappabili dal form: se assenti (mod/reg
+                # vuoti) _build_register restituisce None senza inventare comandi.
+                season_register=_build_register("season", user_input),
+                humidity_setpoint=_build_register("humidity_setpoint", user_input),
                 people=current_zone.people,
                 presence_sensor=current_zone.presence_sensor,
                 is_common_area=current_zone.is_common_area,
@@ -691,6 +848,15 @@ class TermogeaOptionsFlow(config_entries.OptionsFlow):
                 away_temp=current_zone.away_temp,
                 night_temp=current_zone.night_temp,
                 inactive_temp=current_zone.inactive_temp,
+                # Capacità e setpoint estivi preservati dal record esistente:
+                # il mapping tecnico non deve alterarli.
+                supports_cooling=current_zone.supports_cooling,
+                supports_dehumidification=current_zone.supports_dehumidification,
+                summer_comfort_temp=current_zone.summer_comfort_temp,
+                summer_eco_temp=current_zone.summer_eco_temp,
+                summer_away_temp=current_zone.summer_away_temp,
+                summer_night_temp=current_zone.summer_night_temp,
+                summer_inactive_temp=current_zone.summer_inactive_temp,
             )
             await storage.async_upsert_zone(zone)
             self._editing_zone_id = None

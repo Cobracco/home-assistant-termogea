@@ -40,7 +40,7 @@ from .const import (
 )
 from .coordinator import TermogeaDataUpdateCoordinator
 from .models import RegisterDefinition, ZoneDefinition
-from .policy import evaluate_zone_policy
+from .policy import conditioning_is_cooling, evaluate_zone_policy, resolve_active_season
 from .storage_manager import TermogeaStorageManager
 from .zone_map import ZoneMapError
 
@@ -315,6 +315,63 @@ async def _sync_zone_status_mapping_from_controller(
         status_register = imported_status.get(idx)
         if status_register is not None:
             zone.status_register = status_register
+            changed = True
+
+    if changed:
+        await storage.async_save()
+
+
+async def _sync_zone_capabilities_from_controller(
+    storage: TermogeaStorageManager,
+    client: TermogeaClient,
+) -> None:
+    """Backfill non distruttivo delle capacita' zona dalla centralina.
+
+    Legge .thermoregulation.json (via bootstrap) e allinea supports_cooling,
+    supports_dehumidification e mappa season_register/humidity_setpoint quando
+    mancanti. Non sovrascrive setpoint o mapping gia' presenti: aggiorna solo
+    le capacita' (sicure da rileggere) e riempie i registri stagione/umidita'
+    ancora non mappati.
+    """
+    try:
+        _global, imported_zones = await client.async_fetch_controller_bootstrap()
+    except TermogeaApiError:
+        return
+    if not imported_zones:
+        return
+
+    imported_by_idx: dict[int, ZoneDefinition] = {}
+    for imported in imported_zones:
+        idx = _zone_index(imported.zone_id)
+        if idx is not None:
+            imported_by_idx[idx] = imported
+
+    if not imported_by_idx:
+        return
+
+    changed = False
+    for zone in storage.config.zones:
+        idx = _zone_index(zone.zone_id)
+        if idx is None:
+            continue
+        imported = imported_by_idx.get(idx)
+        if imported is None:
+            continue
+
+        # Capacita': rilette dalla centralina, sono la fonte di verita'.
+        if zone.supports_cooling != imported.supports_cooling:
+            zone.supports_cooling = imported.supports_cooling
+            changed = True
+        if zone.supports_dehumidification != imported.supports_dehumidification:
+            zone.supports_dehumidification = imported.supports_dehumidification
+            changed = True
+
+        # Mapping registri: riempi solo se mancante (non distruttivo).
+        if zone.season_register is None and imported.season_register is not None:
+            zone.season_register = imported.season_register
+            changed = True
+        if zone.humidity_setpoint is None and imported.humidity_setpoint is not None:
+            zone.humidity_setpoint = imported.humidity_setpoint
             changed = True
 
     if changed:
@@ -626,27 +683,87 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
             if imported:
                 await hass.config_entries.async_reload(entry_id)
 
+    async def _sync_zone_season_register(
+        client: TermogeaClient,
+        zone: ZoneDefinition,
+        cooling: bool,
+    ) -> None:
+        """Allinea il registro stagione per-zona alla stagione operativa.
+
+        Scrive summer_value/winter_value solo se diverso dal valore letto, per
+        non floodare la centralina. Il registro globale Season (10/99) NON viene
+        mai scritto: e' sola lettura.
+        """
+        season_register = zone.season_register
+        if season_register is None:
+            return
+        desired = (
+            season_register.summer_value
+            if cooling
+            else season_register.winter_value
+        )
+        if desired is None:
+            return
+        try:
+            current_raw, _value = await client.async_read_register(season_register)
+        except TermogeaApiError as err:
+            _LOGGER.warning(
+                "Zone %s season register read failed, skipping season write: %s",
+                zone.zone_id,
+                err,
+            )
+            return
+        if current_raw == desired:
+            return
+        await client.async_write_register_value(season_register, desired)
+
     async def _apply_policy(zone: ZoneDefinition, entry_data: dict) -> None:
         coordinator: TermogeaDataUpdateCoordinator = entry_data[DATA_COORDINATOR]
         client: TermogeaClient = entry_data[DATA_CLIENT]
         storage: TermogeaStorageManager = entry_data[DATA_STORAGE]
+
+        observed_season = coordinator.observed_season
+        settings = storage.config.global_config
+        # Stagione operativa: override manuale (season_mode) > registro osservato.
+        active_season = resolve_active_season(settings, observed_season)
+        cooling = conditioning_is_cooling(active_season)
+
+        snapshot = coordinator.data.get(zone.zone_id) if coordinator.data else None
+        dew_point = snapshot.dew_point if snapshot is not None else None
+
         decision = evaluate_zone_policy(
             hass,
             zone,
             storage.config.zones,
-            storage.config.global_config,
+            settings,
+            observed_season,
+            dew_point=dew_point,
+        )
+
+        # In estate le zone senza raffrescamento vanno a riposo: OnOff off e
+        # nessun setpoint di raffrescamento (mai comandare freddo su radianti
+        # non controllati). La decision ha gia' reason 'cooling_not_supported'.
+        cooling_not_supported = cooling and not zone.supports_cooling
+
+        # HA comanda la stagione: allinea il registro per-zona (se scrivibile e
+        # solo se diverso dal letto). Fail-safe se il registro non e' mappato.
+        # Le zone senza raffrescamento non vanno MAI commutate in stagione
+        # estiva/raffrescamento (rischio condensa su radianti a pavimento):
+        # in estate le si mantiene sul valore invernale (cooling=False).
+        await _sync_zone_season_register(
+            client, zone, cooling and not cooling_not_supported
         )
 
         if zone.target_temperature is None:
             return
 
-        if decision.effective_target is not None:
+        if not cooling_not_supported and decision.effective_target is not None:
             await client.async_write_scaled_register(
                 zone.target_temperature,
                 decision.effective_target,
             )
 
-        if decision.zone_enabled:
+        if decision.zone_enabled and not cooling_not_supported:
             if zone.hvac_mode and zone.hvac_mode.heat_value is not None:
                 await client.async_write_register_value(
                     zone.hvac_mode,
@@ -832,6 +949,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await _repair_zone_humidity_mapping_from_controller(storage, client)
             if any(zone.status_register is None for zone in storage.config.zones):
                 await _sync_zone_status_mapping_from_controller(storage, client)
+            # Allinea capacita' (raffrescamento/deumidificazione) e riempi i
+            # registri stagione/umidita' mancanti. Non distruttivo.
+            await _sync_zone_capabilities_from_controller(storage, client)
     except TermogeaAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except TermogeaApiError as err:

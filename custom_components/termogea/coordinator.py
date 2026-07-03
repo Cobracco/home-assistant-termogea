@@ -9,9 +9,26 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import TermogeaApiError, TermogeaClient
-from .models import ZoneDefinition, ZoneSnapshot
+from .const import (
+    GLOBAL_SEASON_REGISTER_MOD,
+    GLOBAL_SEASON_REGISTER_REG,
+    GLOBAL_SEASON_VALUE_SUMMER,
+    SEASON_SUMMER,
+    SEASON_WINTER,
+)
+from .models import RegisterDefinition, ZoneDefinition, ZoneSnapshot
+from .policy import compute_dew_point
 
 _LOGGER = logging.getLogger(__name__)
+
+# Registro globale Season (sola lettura) cablato: mod=10, reg=99, scale 1.
+# La centralina espone qui la stagione operativa (0=inverno, 1=estate).
+_GLOBAL_SEASON_REGISTER = RegisterDefinition(
+    mod=GLOBAL_SEASON_REGISTER_MOD,
+    reg=GLOBAL_SEASON_REGISTER_REG,
+    scale=1.0,
+    precision=0,
+)
 
 
 class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot]]):
@@ -32,6 +49,29 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
         )
         self.client = client
         self.zones = zones
+        # Stagione operativa osservata dal registro globale della centralina
+        # ("winter"/"summer"). None finche' non e' stata letta almeno una volta.
+        self.observed_season: str | None = None
+
+    async def _async_read_observed_season(self) -> None:
+        """Read the global Season register and cache the observed season.
+
+        Fail-safe: in caso di errore di lettura si mantiene l'ultimo valore noto
+        (o None), senza far fallire l'intero ciclo di aggiornamento.
+        """
+        try:
+            raw, _value = await self.client.async_read_register(_GLOBAL_SEASON_REGISTER)
+        except TermogeaApiError as err:
+            _LOGGER.warning(
+                "Termogea global Season register read failed, keeping previous value: %s",
+                err,
+            )
+            return
+        if raw is None:
+            return
+        self.observed_season = (
+            SEASON_SUMMER if raw == GLOBAL_SEASON_VALUE_SUMMER else SEASON_WINTER
+        )
 
     async def _async_update_data(self) -> dict[str, ZoneSnapshot]:
         try:
@@ -40,6 +80,7 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
             except TermogeaApiError as err:
                 # Do not fail the whole update cycle when status endpoint is flaky.
                 _LOGGER.warning("Termogea status check failed, continuing with cached session: %s", err)
+            await self._async_read_observed_season()
             snapshots: dict[str, ZoneSnapshot] = {}
             for zone in self.zones:
                 previous = self.data.get(zone.zone_id) if isinstance(self.data, dict) else None
@@ -127,6 +168,11 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                             err,
                         )
 
+                # Punto di rugiada per zona: calcolato solo quando temperatura e
+                # umidita' sono valide. humidity_value e' gia' None quando il
+                # raw era 65535/0/None (normalizzazione a monte).
+                dew_point = compute_dew_point(current_value, humidity_value)
+
                 snapshots[zone.zone_id] = ZoneSnapshot(
                     current_temperature=current_value,
                     current_humidity=humidity_value,
@@ -134,6 +180,8 @@ class TermogeaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, ZoneSnapshot
                     hvac_mode=hvac_mode,
                     status_value=status_value,
                     raw_values=raw_values,
+                    season=self.observed_season,
+                    dew_point=dew_point,
                 )
 
             if not snapshots and isinstance(self.data, dict):

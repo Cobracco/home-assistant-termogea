@@ -88,7 +88,9 @@
           "summer_eco_temp": "Estate eco",
           "summer_away_temp": "Estate away",
           "summer_night_temp": "Estate night",
-          "summer_inactive_temp": "Estate inattiva/off"
+          "summer_inactive_temp": "Estate inattiva/off",
+          "dewpoint_protection_enabled": "Protezione anticondensa attiva",
+          "dewpoint_margin": "Margine anticondensa (°C)"
         }
       },
       "season_settings": {
@@ -114,7 +116,14 @@
           "eco_temp": "Temperatura eco",
           "away_temp": "Temperatura away",
           "night_temp": "Temperatura night",
-          "inactive_temp": "Temperatura inattiva/off"
+          "inactive_temp": "Temperatura inattiva/off",
+          "supports_cooling": "Supporta raffrescamento",
+          "supports_dehumidification": "Supporta deumidificazione",
+          "summer_comfort_temp": "Estate comfort",
+          "summer_eco_temp": "Estate eco",
+          "summer_away_temp": "Estate away",
+          "summer_night_temp": "Estate night",
+          "summer_inactive_temp": "Estate inattiva/off"
         }
       },
       "zone_policy": {
@@ -134,7 +143,14 @@
           "eco_temp": "Temperatura eco",
           "away_temp": "Temperatura away",
           "night_temp": "Temperatura night",
-          "inactive_temp": "Temperatura inattiva/off"
+          "inactive_temp": "Temperatura inattiva/off",
+          "supports_cooling": "Supporta raffrescamento",
+          "supports_dehumidification": "Supporta deumidificazione",
+          "summer_comfort_temp": "Estate comfort",
+          "summer_eco_temp": "Estate eco",
+          "summer_away_temp": "Estate away",
+          "summer_night_temp": "Estate night",
+          "summer_inactive_temp": "Estate inattiva/off"
         }
       },
       "zone_mapping": {
@@ -158,7 +174,14 @@
           "hvac_mod": "MOD modalita HVAC",
           "hvac_reg": "REG modalita HVAC",
           "hvac_off_value": "Valore raw HVAC OFF",
-          "hvac_heat_value": "Valore raw HVAC HEAT"
+          "hvac_heat_value": "Valore raw HVAC HEAT",
+          "season_mod": "MOD registro stagione",
+          "season_reg": "REG registro stagione",
+          "season_winter_value": "Valore raw stagione inverno",
+          "season_summer_value": "Valore raw stagione estate",
+          "humidity_setpoint_mod": "MOD setpoint umidita",
+          "humidity_setpoint_reg": "REG setpoint umidita",
+          "humidity_setpoint_scale": "Scala setpoint umidita"
         }
       },
       "edit_zone_select": {
