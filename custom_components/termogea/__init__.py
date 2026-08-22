@@ -16,7 +16,12 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .api import TermogeaApiError, TermogeaAuthError, TermogeaClient
+from .api import (
+    TermogeaApiError,
+    TermogeaAuthError,
+    TermogeaClient,
+    normalize_humidity_reading,
+)
 from .const import (
     ATTR_ENABLED,
     ATTR_ZONE_ID,
@@ -389,14 +394,13 @@ async def _is_humidity_register_readable(
     register: RegisterDefinition,
 ) -> bool:
     try:
-        _raw, value = await client.async_read_register(register)
+        raw, value = await client.async_read_register(register)
     except TermogeaApiError:
         return False
-    if value is None:
-        return False
-    # Humidity values out of physical range are considered invalid mapping.
-    # 0% and >100% are treated as invalid for residential zones.
-    return 0.0 < value <= 100.0
+    # Stessa normalizzazione del coordinator: sentinelle (0/65535) e valori
+    # implausibili (< MIN_VALID_HUMIDITY_PCT, es. flag 0/1 da registro mappato
+    # male) NON contano come mapping valido.
+    return normalize_humidity_reading(raw, value) is not None
 
 
 async def _is_temperature_register_readable(
