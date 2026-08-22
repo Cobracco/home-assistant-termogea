@@ -142,6 +142,10 @@ entities:
 
 Risolti nelle ultime iterazioni:
 
+- letture umidita implausibili (es. RH=1% da registro mappato male) scartate: niente piu dew point assurdi (-33 °C) che disattivavano di fatto la protezione anticondensa
+- validazione live del registro umidita durante l'import da controller: un registro che legge valori implausibili viene scartato invece di avvelenare il mapping
+- ciclo di aggiornamento in batch: tutte le letture registro di un ciclo in poche richieste `dev_cmd` multiple invece di ~1 richiesta HTTP per registro (elimina i warning "Update of climate.X is taking over 10 seconds")
+- controller irraggiungibile a integrazione avviata: le entita diventano `unavailable` invece di congelare per sempre gli ultimi valori noti
 - raffrescamento estivo con modalita `climate` cool/heat dinamica, direzione domanda invertita e protezione anticondensa (dew point)
 - stagione letta dai registri di zona affidabili in modalita `auto` (evita lo sfarfallio del registro globale non stabile)
 - allineamento del setpoint alla stagione anche per le zone a riposo (elimina i target invernali residui in estate)

@@ -15,6 +15,7 @@ from .const import (
     GLOBAL_MODE_ECO,
     GLOBAL_MODE_NIGHT,
     GLOBAL_MODE_OFF,
+    MIN_VALID_HUMIDITY_PCT,
     POLICY_REASON_COOLING_NOT_SUPPORTED,
     SEASON_MODE_SUMMER,
     SEASON_MODE_WINTER,
@@ -30,8 +31,10 @@ def compute_dew_point(temp_c: float | None, rh_pct: float | None) -> float | Non
     """Calcola il punto di rugiada (°C) con la formula di Magnus-Tetens.
 
     Ritorna None quando temperatura o umidita' non sono valide (assenti, RH
-    fuori dall'intervallo 0-100% o non positiva). Il risultato e' arrotondato
-    a un decimale, coerente con la precisione dei sensori.
+    fuori dall'intervallo plausibile MIN_VALID_HUMIDITY_PCT-100%). Una RH
+    implausibilmente bassa (es. 1% da un registro mappato male) darebbe un
+    dew point assurdo che azzererebbe il floor anticondensa. Il risultato e'
+    arrotondato a un decimale, coerente con la precisione dei sensori.
     """
     if temp_c is None or rh_pct is None:
         return None
@@ -40,7 +43,7 @@ def compute_dew_point(temp_c: float | None, rh_pct: float | None) -> float | Non
         rh = float(rh_pct)
     except (TypeError, ValueError):
         return None
-    if not 0.0 < rh <= 100.0:
+    if not MIN_VALID_HUMIDITY_PCT <= rh <= 100.0:
         return None
     gamma = (_MAGNUS_A * temp) / (_MAGNUS_B + temp) + math.log(rh / 100.0)
     dew_point = (_MAGNUS_B * gamma) / (_MAGNUS_A - gamma)

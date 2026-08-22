@@ -81,6 +81,12 @@ POLICY_REASON_COOLING_NOT_SUPPORTED = "cooling_not_supported"
 # Protezione anticondensa: margine di default sopra il punto di rugiada (°C).
 DEFAULT_DEWPOINT_MARGIN = 1.5
 
+# Umidita' relativa minima plausibile per un ambiente indoor (%). Letture sotto
+# questa soglia (tipicamente un registro mappato male che restituisce un flag
+# 0/1) vengono scartate: una RH implausibile produrrebbe un dew point assurdo
+# (es. RH=1% -> -33 °C) che disattiva di fatto la protezione anticondensa.
+MIN_VALID_HUMIDITY_PCT = 5.0
+
 GLOBAL_MODE_AUTO = "auto"
 GLOBAL_MODE_COMFORT = "comfort"
 GLOBAL_MODE_ECO = "eco"

@@ -7,6 +7,7 @@ import configparser
 import io
 import html
 import json
+import logging
 import re
 import tarfile
 from collections.abc import Mapping
@@ -18,10 +19,17 @@ from aiohttp import ClientError, ClientSession
 
 from .const import (
     DEFAULT_DEWPOINT_MARGIN,
+    MIN_VALID_HUMIDITY_PCT,
     ZONE_SEASON_VALUE_SUMMER,
     ZONE_SEASON_VALUE_WINTER,
 )
 from .models import GlobalConfig, RegisterDefinition, ScheduleRule, ZoneDefinition
+
+_LOGGER = logging.getLogger(__name__)
+
+# Dimensione massima di un batch dev_cmd: tiene l'URL entro i limiti tipici
+# dei web server embedded mantenendo comunque pochi round-trip per ciclo.
+READ_BATCH_SIZE = 16
 
 
 class TermogeaApiError(Exception):
@@ -30,6 +38,32 @@ class TermogeaApiError(Exception):
 
 class TermogeaAuthError(TermogeaApiError):
     """Raised when authentication fails."""
+
+
+def normalize_humidity_reading(
+    raw: int | None, value: float | None
+) -> float | None:
+    """Normalizza una lettura di umidita' relativa di zona (%).
+
+    - 0 e 65535 sono sentinelle di sonda assente/non valida.
+    - Valori scalati fuori 0-100 con raw fino a 1000 sono interpretati come
+      decimi (es. 552 -> 55.2%), per centraline con scale metadata mancante.
+    - Sotto MIN_VALID_HUMIDITY_PCT la lettura e' implausibile per un ambiente
+      indoor (tipicamente un registro mappato male che restituisce un flag
+      0/1) e viene scartata per non avvelenare il calcolo del dew point.
+    """
+    if raw in (None, 0, 65535):
+        return None
+    if value is None:
+        return None
+    if not 0.0 < value <= 100.0:
+        if 0 < raw <= 1000:
+            value = round(float(raw) / 10.0, 1)
+        else:
+            return None
+    if value < MIN_VALID_HUMIDITY_PCT:
+        return None
+    return value
 
 
 WEEKDAY_MAP: Mapping[str, str] = {
@@ -854,6 +888,11 @@ class TermogeaClient:
                         idx,
                         names_by_zone.get(idx, ""),
                     )
+                if humidity_def is not None:
+                    humidity_def = await self._async_validate_humidity_register(
+                        humidity_def,
+                        idx,
+                    )
             target_tuple = (
                 self._find_register_entry_by_names(register_catalog, [tset_name]) if tset_name else None
             )
@@ -1069,32 +1108,119 @@ class TermogeaClient:
         )
         return global_config, zones
 
+    async def _async_validate_humidity_register(
+        self,
+        register: RegisterDefinition,
+        zone_index: int,
+    ) -> RegisterDefinition | None:
+        """Scarta un registro umidita' che legge valori implausibili.
+
+        La risoluzione per nome/euristica puo' agganciare un registro che non
+        e' una RH (es. un flag 0/1 o il registro base della zona successiva):
+        tenerlo avvelenerebbe il dew point e la protezione anticondensa.
+        Sentinelle di sonda assente (0/65535) ed errori di lettura non
+        invalidano il mapping.
+        """
+        try:
+            raw, value = await self.async_read_register(register)
+        except TermogeaApiError as err:
+            _LOGGER.debug(
+                "Zone %s: humidity register mod=%s reg=%s validation read failed: %s",
+                zone_index,
+                register.mod,
+                register.reg,
+                err,
+            )
+            return register
+        if raw in (None, 0, 65535):
+            return register
+        if normalize_humidity_reading(raw, value) is None:
+            _LOGGER.warning(
+                "Zone %s: humidity register mod=%s reg=%s reads implausible "
+                "value raw=%s, discarding humidity mapping",
+                zone_index,
+                register.mod,
+                register.reg,
+                raw,
+            )
+            return None
+        return register
+
     async def async_read_register(
         self,
         register: RegisterDefinition,
     ) -> tuple[int | None, float | None]:
         """Read a Termogea register."""
-        payload = json.dumps(
-            [{"mod": register.mod, "reg": register.reg}],
-            separators=(",", ":"),
-        )
-        text = await self._async_request(
-            "POST",
-            f"/api/command.php?dev_cmd={payload}",
-        )
-        try:
-            data = json.loads(text)
-            raw = data["result"][0]["val"]
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as err:
-            raise TermogeaApiError(
-                f"Unable to parse register response for mod={register.mod} reg={register.reg}"
-            ) from err
+        results = await self.async_read_registers([register])
+        return results[0]
 
-        if raw is None:
-            return None, None
+    async def async_read_registers(
+        self,
+        registers: list[RegisterDefinition],
+    ) -> list[tuple[int | None, float | None]]:
+        """Read multiple registers batching dev_cmd requests.
 
-        value = round(float(raw) / register.scale, register.precision)
-        return int(raw), value
+        L'endpoint command.php accetta nativamente una lista di richieste:
+        un batch riduce il ciclo di aggiornamento da ~1 richiesta HTTP per
+        registro a poche richieste totali. I risultati sono ritornati
+        nell'ordine delle definizioni richieste.
+        """
+        results: list[tuple[int | None, float | None]] = []
+        for start in range(0, len(registers), READ_BATCH_SIZE):
+            chunk = registers[start : start + READ_BATCH_SIZE]
+            payload = json.dumps(
+                [{"mod": register.mod, "reg": register.reg} for register in chunk],
+                separators=(",", ":"),
+            )
+            text = await self._async_request(
+                "POST",
+                f"/api/command.php?dev_cmd={payload}",
+            )
+            try:
+                data = json.loads(text)
+                items = data["result"]
+            except (KeyError, TypeError, json.JSONDecodeError) as err:
+                raise TermogeaApiError(
+                    "Unable to parse register batch response "
+                    f"({len(chunk)} registers from mod={chunk[0].mod} reg={chunk[0].reg})"
+                ) from err
+            if not isinstance(items, list) or len(items) != len(chunk):
+                raise TermogeaApiError(
+                    f"Register batch response mismatch: expected {len(chunk)} items, "
+                    f"got {len(items) if isinstance(items, list) else type(items).__name__}"
+                )
+            for register, item in zip(chunk, items):
+                if not isinstance(item, Mapping):
+                    raise TermogeaApiError(
+                        "Unable to parse register response for "
+                        f"mod={register.mod} reg={register.reg}"
+                    )
+                # Se la risposta echeggia mod/reg, verifica l'allineamento
+                # posizionale per non attribuire valori alla zona sbagliata.
+                item_mod = self._safe_int(item.get("mod"))
+                item_reg = self._safe_int(item.get("reg"))
+                if (
+                    item_mod is not None
+                    and item_reg is not None
+                    and (item_mod != register.mod or item_reg != register.reg)
+                ):
+                    raise TermogeaApiError(
+                        "Register batch response out of order: expected "
+                        f"mod={register.mod} reg={register.reg}, got mod={item_mod} reg={item_reg}"
+                    )
+                raw = item.get("val")
+                if raw is None:
+                    results.append((None, None))
+                    continue
+                try:
+                    value = round(float(raw) / register.scale, register.precision)
+                    results.append((int(raw), value))
+                except (TypeError, ValueError) as err:
+                    raise TermogeaApiError(
+                        "Unable to parse register value for "
+                        f"mod={register.mod} reg={register.reg}: {raw!r}"
+                    ) from err
+        return results
 
     async def async_write_register_value(
         self,
